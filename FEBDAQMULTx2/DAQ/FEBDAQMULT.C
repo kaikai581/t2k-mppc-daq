@@ -121,6 +121,7 @@
 #include <sys/timeb.h>
 
 #define maxpe 10 //max number of photoelectrons to use in the fit
+#define nboard 2 // number of boards in this system
 int NEVDISP=200; //number of lines in the waterfall event display
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
@@ -135,6 +136,13 @@ TGNumberEntry *fNumberEntry8869;
 TGNumberEntry *fNumberEntryTME;
 //TGLabel *fLabel;
 TGStatusBar *fStatusBar739;
+//******************************************
+// TGRadioButton * fChanProbe[nboard][33];
+// TGCheckButton * fChanEnaAmp[nboard][34];
+// TGCheckButton * fChanEnaTrig[nboard][33];
+// TGNumberEntry * fChanGain[nboard][32];
+// TGNumberEntry * fChanBias[nboard][32];
+//******************************************
 TGRadioButton * fChanProbe[33];
 TGCheckButton * fChanEnaAmp[34];
 TGCheckButton * fChanEnaTrig[33];
@@ -153,6 +161,7 @@ UChar_t bufSCR[1500];
 UChar_t buf[1500];
 TH1F * hst[32];
 TCanvas *c=0;
+TCanvas *c_2=0;
 TCanvas *c1=0;
 TCanvas *c3=0;
 TCanvas *c4=0;
@@ -198,7 +207,7 @@ void ConfigSetFIL(uint32_t mask1, uint32_t mask2, uint8_t majority);
 UInt_t GrayToBin(UInt_t n)
 {
     UInt_t res=0;
-    int a[32],b[32],i=0,c=0;
+    int a[32],b[32],i=0,c=0,c_2=0;
 
     for(i=0; i<32; i++){
         if((n & 0x80000000)>0) a[i]=1;
@@ -276,12 +285,12 @@ Double_t mppc1( Double_t *xx, Double_t *par) // from http://zeus.phys.uconn.edu/
 
 void FEBDAQMULT(const char *iface="eth1")
 {
-    if(Init(iface)==0) return;
+    // if(Init(iface)==0) return;
     FEBGUI();
-    UpdateConfig();
-    fNumberEntry8869->SetLimitValues(0,t->nclients-1);
-    for(int feb=0; feb<t->nclients; feb++)  VCXO_Values[feb]=VCXO_Value;
-    UpdateBoardMonitor(); 
+    // UpdateConfig();
+    // fNumberEntry8869->SetLimitValues(0,t->nclients-1);
+    // for(int feb=0; feb<t->nclients; feb++)  VCXO_Values[feb]=VCXO_Value;
+    // UpdateBoardMonitor(); 
 }
 
 void ConfigSetBit(UChar_t *buffer, UShort_t bitlen, UShort_t bit_index, Bool_t value)
@@ -462,7 +471,7 @@ void SendAllChecked()
     //  t->SendCMD(t->dstmac,FEB_WR_PMR,0x0000,bufPMR);
     // }
     fChanEnaAmp[33]->SetOn(kFALSE);fChanEnaAmp[32]->SetOn(kFALSE);
-    }
+}
 void SendAllUnChecked()
 {
     for(int i=0; i<32;i++)
@@ -477,7 +486,7 @@ void SendAllUnChecked()
     //  t->SendCMD(t->dstmac,FEB_WR_PMR,0x0000,bufPMR);
     // }
     fChanEnaAmp[33]->SetOn(kFALSE);fChanEnaAmp[32]->SetOn(kFALSE);
-    }
+}
 
 
 
@@ -656,6 +665,7 @@ void UpdateHisto()
     chan=fNumberEntry886->GetNumber();
     for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[y*4+x]->Draw();}
     c->Update();
+    c_2->Update();
     c1->cd(); hst[chan]->Draw();
     c1->Update();
     c3->cd(1);
@@ -1324,7 +1334,6 @@ void FEBGUI()
     }
     fCompositeFrame686->AddFrame(fGains, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
 
-
     // container of "All histos"
     TGCompositeFrame *fCompositeFrame720;
     fCompositeFrame720 = fTab683->AddTab("All histos");
@@ -1408,6 +1417,119 @@ void FEBGUI()
     fRootEmbeddedCanvas73622->AdoptCanvas(c6);
     fCompositeFrame73522->AddFrame(fRootEmbeddedCanvas73622, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
 
+
+    // Adding my own tabs at the end
+    //**************************************************************************
+    // My modification *********************************************************
+    // container of "Configuration" for another board
+    TGCompositeFrame *fCompositeFrame6862;
+    fCompositeFrame6862 = fTab683->AddTab("Configuration 2");
+    fCompositeFrame6862->SetLayoutManager(new TGHorizontalLayout(fCompositeFrame6862));
+    char str2[32];
+
+    TGVButtonGroup* fButtonGroup22=new TGVButtonGroup(fCompositeFrame6862,"Enable Amplifier");
+    for(int i=0;i<32;i++)
+    {
+        sprintf(str2,"ch%d",i);
+        fChanEnaAmp[i] = new TGCheckButton(fButtonGroup22,str2);
+        fChanEnaAmp[i]->SetTextJustify(36);
+        fChanEnaAmp[i]->SetMargins(0,0,0,0);
+        fChanEnaAmp[i]->SetWrapLength(-1);
+        fChanEnaAmp[i]->SetCommand("SendConfig()");
+    }
+    fChanEnaAmp[32] = new TGCheckButton(fButtonGroup22,"All");
+    fChanEnaAmp[32]->SetTextJustify(36);
+    fChanEnaAmp[32]->SetMargins(0,0,0,0);
+    fChanEnaAmp[32]->SetWrapLength(-1);
+    fChanEnaAmp[32]->SetCommand("SendAllChecked()");
+    fChanEnaAmp[33] = new TGCheckButton(fButtonGroup22,"None");
+    fChanEnaAmp[33]->SetTextJustify(36);
+    fChanEnaAmp[33]->SetMargins(0,0,0,0);
+    fChanEnaAmp[33]->SetWrapLength(-1);
+    fChanEnaAmp[33]->SetCommand("SendAllUnChecked()");
+
+    fCompositeFrame6862->AddFrame(fButtonGroup22, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
+    fButtonGroup22->Show();
+
+    TGVButtonGroup* fButtonGroup32=new TGVButtonGroup(fCompositeFrame6862,"Enable Trigger");
+    for(int i=0;i<32;i++)
+    {
+        sprintf(str2,"ch%d",i);
+        fChanEnaTrig[i] = new TGCheckButton(fButtonGroup32,str2);
+        fChanEnaTrig[i]->SetTextJustify(36);
+        fChanEnaTrig[i]->SetMargins(0,0,0,0);
+        fChanEnaTrig[i]->SetWrapLength(-1);
+        fChanEnaTrig[i]->SetCommand("SendConfig()");
+    }
+    fChanEnaTrig[32] = new TGCheckButton(fButtonGroup32,"OR32");
+    fChanEnaTrig[32]->SetTextJustify(36);
+    fChanEnaTrig[32]->SetMargins(0,0,0,0);
+    fChanEnaTrig[32]->SetWrapLength(-1);
+    fChanEnaTrig[32]->SetCommand("SendConfig()");
+
+    fCompositeFrame6862->AddFrame(fButtonGroup32, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
+    fButtonGroup32->Show();
+
+
+    TGVButtonGroup* fButtonGroup12=new TGVButtonGroup(fCompositeFrame6862,"Probe register");
+    for(int i=0;i<32;i++)
+    {
+        sprintf(str2,"ch%d",i);
+        fChanProbe[i] = new TGRadioButton(fButtonGroup12,str2);
+        fChanProbe[i]->SetTextJustify(36);
+        fChanProbe[i]->SetMargins(0,0,0,0);
+        fChanProbe[i]->SetWrapLength(-1);
+        fChanProbe[i]->SetCommand("SendConfig()");
+    }
+    fChanProbe[32] = new TGRadioButton(fButtonGroup12,"None");
+    fChanProbe[32]->SetTextJustify(36);
+    fChanProbe[32]->SetMargins(0,0,0,0);
+    fChanProbe[32]->SetWrapLength(-1);
+    fChanProbe[32]->SetCommand("SendConfig()");
+    fCompositeFrame6862->AddFrame(fButtonGroup12, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
+    fButtonGroup12->SetRadioButtonExclusive(kTRUE);
+    fButtonGroup12->Show();
+    fChanProbe[4]->SetOn();
+
+    // TGGroupFrame* fGainsGroup = new TGGroupFrame(
+    TGGroupFrame* fGains2=new TGGroupFrame(fCompositeFrame6862,"HG preamp gain/bias");
+    //fGains2->SetLayoutManager(new TGVerticalLayout(fGains2));
+    fGains2->SetLayoutManager(new TGMatrixLayout(fGains2, 32, 3, 0, kLHintsLeft | kLHintsTop));
+    for(int i=0;i<32;i++)
+    {
+        sprintf(str2," CH %d",i);
+        fChanGain[i] = new TGNumberEntry(fGains2, (Double_t) i,2,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,64);
+        fChanGain[i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
+        fChanGain[i]->SetHeight(20);
+        fChanBias[i] = new TGNumberEntry(fGains2, (Double_t) i,3,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,256);
+        fChanBias[i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
+        fChanBias[i]->SetHeight(20);
+        fGains2->AddFrame(new TGLabel(fGains2,str2));
+        fGains2->AddFrame(fChanGain[i]);
+        fGains2->AddFrame(fChanBias[i]);
+
+    }
+    fCompositeFrame6862->AddFrame(fGains2, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
+    // End of my modification **************************************************
+    //**************************************************************************
+
+    //**************************************************************************
+    // My modification *********************************************************
+    // container of "All histos"
+    TGCompositeFrame *fCompositeFrame7202;
+    fCompositeFrame7202 = fTab683->AddTab("All histos 2");
+    fCompositeFrame7202->SetLayoutManager(new TGVerticalLayout(fCompositeFrame7202));
+
+    // embedded canvas
+    TRootEmbeddedCanvas *fRootEmbeddedCanvas7212 = new TRootEmbeddedCanvas(0,fCompositeFrame7202,1179,732+100);
+    Int_t wfRootEmbeddedCanvas7212 = fRootEmbeddedCanvas7212->GetCanvasWindowId();
+    c_2 = new TCanvas("c_2", 10, 10, wfRootEmbeddedCanvas7212);    c_2->Divide(4,8);
+
+    fRootEmbeddedCanvas7212->AdoptCanvas(c_2);
+    fCompositeFrame7202->AddFrame(fRootEmbeddedCanvas7212, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
+    
+    // End of my modification **************************************************
+    //**************************************************************************
 
     fTab683->SetTab(2);
 
