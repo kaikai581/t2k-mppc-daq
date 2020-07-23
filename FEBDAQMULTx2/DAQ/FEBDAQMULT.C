@@ -114,11 +114,16 @@
 #endif
 
 #include "Riostream.h"
+#include "TBenchmark.h"
+#include "TGraph.h"
 #include "TMath.h"
 #include "TF1.h"
+#include "TH2F.h"
+#include "TSystem.h"
 #include "TTree.h"
 #include "time.h"
 #include <sys/timeb.h>
+#include "FEBDTP.hxx"
 
 #define maxpe 10 //max number of photoelectrons to use in the fit
 #define nboard 2 // number of boards in this system
@@ -455,6 +460,15 @@ void SendConfig()
     t->SendCMD(t->dstmac,FEB_WR_PMR,0x0000,bufPMR);
     t->SendCMD(t->dstmac,FEB_WR_FIL,0x0000,bufFIL);
     // }
+}
+
+extern "C" {
+void SelectBoard(int bnum)
+{
+    BoardToMon = bnum;
+    // fNumberEntry8869->SetNumber(bnum);
+    std::cout << BoardToMon << std::endl;
+}
 }
 
 void SendAllChecked()
@@ -857,20 +871,20 @@ void DAQ(int nev=0)
         evsperrequest=0;
         tm1=time(NULL);
 
-}
-fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffffff); 
-fStatusBar739->GetBarPart(1)->SetBackgroundColor(0xffffff); 
-fStatusBar739->GetBarPart(2)->SetBackgroundColor(0xffffff); 
-fStatusBar739->GetBarPart(3)->SetBackgroundColor(0xffffff); 
-fStatusBar739->GetBarPart(4)->SetBackgroundColor(0xffffff); 
-fStatusBar739->GetBarPart(5)->SetBackgroundColor(0xffffff); 
+    }
+    fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffffff); 
+    fStatusBar739->GetBarPart(1)->SetBackgroundColor(0xffffff); 
+    fStatusBar739->GetBarPart(2)->SetBackgroundColor(0xffffff); 
+    fStatusBar739->GetBarPart(3)->SetBackgroundColor(0xffffff); 
+    fStatusBar739->GetBarPart(4)->SetBackgroundColor(0xffffff); 
+    fStatusBar739->GetBarPart(5)->SetBackgroundColor(0xffffff); 
 
-// t->SendCMD(t->dstmac,FEB_GEN_HVOF,0,buf);
-printf("Overal per DAQ call: %d events acquired, %d (%2.1f\%%) lost (skipping first request).\n",evs,total_lost, (100.*total_lost/(evs+total_lost)));
-sprintf(str1, "Overal: %d acquired, %d (%2.1f\%%) lost",evs,total_lost, (100.*total_lost/(evs+total_lost)));
-fStatusBar739->SetText(str1,5);
-for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[y*4+x]->Draw();}
-c->Update();
+    // t->SendCMD(t->dstmac,FEB_GEN_HVOF,0,buf);
+    printf("Overal per DAQ call: %d events acquired, %d (%2.1f\%%) lost (skipping first request).\n",evs,total_lost, (100.*total_lost/(evs+total_lost)));
+    sprintf(str1, "Overal: %d acquired, %d (%2.1f\%%) lost",evs,total_lost, (100.*total_lost/(evs+total_lost)));
+    fStatusBar739->SetText(str1,5);
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[y*4+x]->Draw();}
+    c->Update();
 
 
 }
@@ -1230,6 +1244,8 @@ void FEBGUI()
     fGroupFrame679->AddFrame(fNumberEntry8869, new TGLayoutHints(kLHintsExpandX | kLHintsCenterX ));
     // fNumberEntry8869->SetCommand("UpdateBoardMonitor()");
     fNumberEntry8869->Connect("ValueSet(Long_t)", 0, 0,  "UpdateBoardMonitor()");
+    // Diable the ability to modify the value.
+    fNumberEntry8869->SetState(kFALSE);
 
     TGTextButton *fTextButton1188 = new TGTextButton(fGroupFrame679,"Rescan network");
     fTextButton1188->SetTextJustify(36);
