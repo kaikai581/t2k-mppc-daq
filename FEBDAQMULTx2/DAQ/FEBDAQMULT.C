@@ -166,7 +166,7 @@ UChar_t mac5=0x00;
 UChar_t bufPMR[1500];
 UChar_t bufSCR[1500];
 UChar_t buf[1500];
-TH1F * hst[32];
+TH1F * hst[nboard][32];
 TCanvas *c=0;
 TCanvas *c_2=0;
 TCanvas *c1=0;
@@ -552,14 +552,15 @@ int Init(const char *iface="eth1")
     char str2[32];
     SetDstMacByIndex(0);
     evs=0;
-    for(int i=0;i<32;i++) {
-        sprintf(str1,"h%d",i);
-        sprintf(str2,"ADC # %d",i);
-        hst[i]=new TH1F(str1,str2,820,0,4100);
-        hst[i]->GetXaxis()->SetTitle("ADC value");
-        hst[i]->GetYaxis()->SetTitle("Events");
-
-    }
+    for(int i=0;i<32;i++)
+        for(int feb = 0; feb < nboard; feb++)
+        {
+            sprintf(str1,"h%d",i);
+            sprintf(str2,"ADC # %d",i);
+            hst[feb][i]=new TH1F(str1,str2,820,0,4100);
+            hst[feb][i]->GetXaxis()->SetTitle("ADC value");
+            hst[feb][i]->GetYaxis()->SetTitle("Events");
+        }
     for(int i=0;i<256;i++) gts0[i]=new TGraph();
     for(int i=0;i<256;i++) gts1[i]=new TGraph();
     hcprof=new TH1F("hcprof","Channel profile",32,0,32);
@@ -635,59 +636,60 @@ void FillHistos(int truncat)  // hook called by libFEBDTP when event is received
         if(t->Verbose) printf("T0=%u ns, T1=%u ns T0_ref=%u ns  T1_ref=%u ns \n",ts0,ts1,ts0_ref,ts1_ref);
         //	printf(" ADC[32]:\n"); 
 
-        for(kk=0; kk<32; kk++) if (CHAN_MASK & (1<<kk))
-        {
-            adc=*(UShort_t*)(&(t->gpkt).Data[jj]); jj++; jj++;  
-            //		printf("%04u ",adc);
-            if(t->dstmac[5] == t->macs[BoardToMon][5])
-            { 
-                hst[kk]->Fill(adc);
-                hcprof->Fill(kk,adc);
-                if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==6) {   
-                    hevdisp->SetBinContent(kk,NEVDISP,adc);
+        for(kk=0; kk<32; kk++)
+            if (CHAN_MASK & (1<<kk))
+            {
+                adc=*(UShort_t*)(&(t->gpkt).Data[jj]); jj++; jj++;  
+                //		printf("%04u ",adc);
+                if(t->dstmac[5] == t->macs[BoardToMon][5])
+                { 
+                    hst[BoardToMon][kk]->Fill(adc);
+                    hcprof->Fill(kk,adc);
+                    if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==6) {   
+                        hevdisp->SetBinContent(kk,NEVDISP,adc);
+                    }
+                }
+                chg[kk]=adc;
+            } //if(jj>=(truncat-18)) return;}
+            else {chg[kk]=0; jj+=2;}
+
+        if(t->dstmac[5] == t->macs[BoardToMon][5]) 
+            if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==6) {   
+                for(int evi=1; evi<=NEVDISP;evi++) for(kk=0; kk<32; kk++)
+                {
+                    hevdisp->SetBinContent(kk,evi-1,hevdisp->GetBinContent(kk,evi));
                 }
             }
-            chg[kk]=adc;
-        } //if(jj>=(truncat-18)) return;}
-    else {chg[kk]=0; jj+=2;}
 
-    if(t->dstmac[5] == t->macs[BoardToMon][5]) 
-        if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==6) {   
-            for(int evi=1; evi<=NEVDISP;evi++) for(kk=0; kk<32; kk++)
-            {
-                hevdisp->SetBinContent(kk,evi-1,hevdisp->GetBinContent(kk,evi));
-            }
+        //       printf("\n");
+        mac5=t->dstmac[5];
+        // printf("Filling tree with mac5=0x%02x\n",mac5);
+        gts0[mac5]->SetPoint(gts0[mac5]->GetN(),gts0[mac5]->GetN(),ts0_ref-1e9);
+        if(ts1!=0) gts1[mac5]->SetPoint(gts1[mac5]->GetN(),gts1[mac5]->GetN(),ts1);
+        tr->Fill();
+        if(t->dstmac[5] == t->macs[BoardToMon][5])
+        {
+            evs++;
+            evspack++; 
+            evsperrequest++; 
+            total_lost+=lostinfpga; 
+            ts0_ref_mon=ts0_ref;  
+            ts1_ref_mon=ts1_ref;
+            NOts0_mon=NOts0;  
+            NOts1_mon=NOts1;  
         }
-
-    //       printf("\n");
-    mac5=t->dstmac[5];
-    // printf("Filling tree with mac5=0x%02x\n",mac5);
-    gts0[mac5]->SetPoint(gts0[mac5]->GetN(),gts0[mac5]->GetN(),ts0_ref-1e9);
-    if(ts1!=0) gts1[mac5]->SetPoint(gts1[mac5]->GetN(),gts1[mac5]->GetN(),ts1);
-    tr->Fill();
-    if(t->dstmac[5] == t->macs[BoardToMon][5])
-    {
-        evs++;
-        evspack++; 
-        evsperrequest++; 
-        total_lost+=lostinfpga; 
-        ts0_ref_mon=ts0_ref;  
-        ts1_ref_mon=ts1_ref;
-        NOts0_mon=NOts0;  
-        NOts1_mon=NOts1;  
     }
-}
-//        printf("Packet: events %d\n", evspack);
+    // printf("Packet: events %d\n", evspack);
 
 }
 
 void UpdateHisto()
 {
     chan=fNumberEntry886->GetNumber();
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[y*4+x]->Draw();}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
     c->Update();
     c_2->Update();
-    c1->cd(); hst[chan]->Draw();
+    c1->cd(); hst[BoardToMon][chan]->Draw();
     c1->Update();
     c3->cd(1);
     gts0[t->macs[0][5]]->Draw("AL");
@@ -723,6 +725,7 @@ void StopDAQ()
 }
 
 
+// nev: number of events to take
 void StartDAQ(int nev=0)
 {
     t->dstmac[5]=0xff; //Broadcast
@@ -802,11 +805,11 @@ void DAQ(int nev=0)
         }
 
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==1) {   
-            for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[y*4+x]->Draw();}
+            for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
             c->Update();
         }
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==2) {   
-            c1->cd(); hst[chan]->Draw();
+            c1->cd(); hst[BoardToMon][chan]->Draw();
             c1->Update();
         }
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==3) {   
@@ -890,7 +893,7 @@ void DAQ(int nev=0)
     printf("Overal per DAQ call: %d events acquired, %d (%2.1f\%%) lost (skipping first request).\n",evs,total_lost, (100.*total_lost/(evs+total_lost)));
     sprintf(str1, "Overal: %d acquired, %d (%2.1f\%%) lost",evs,total_lost, (100.*total_lost/(evs+total_lost)));
     fStatusBar739->SetText(str1,5);
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[y*4+x]->Draw();}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
     c->Update();
 
 
@@ -898,10 +901,10 @@ void DAQ(int nev=0)
 
 void Reset()
 {
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[y*4+x]->Reset();}
-    c1->cd(); hst[chan]->Draw();
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Reset();}
+    c1->cd(); hst[BoardToMon][chan]->Draw();
     c1->Update();
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[y*4+x]->Draw();}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
     c->Update();
     tr->Reset();
     evs=0;
@@ -932,7 +935,7 @@ void Reset()
 
 void All()
 {
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[y*4+x]->Draw("same");}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Draw("same");}
 }
 
 void HVON()
@@ -1057,7 +1060,7 @@ void UpdateBoardMonitor()
     printf("Monitoring FEB mac5 0x%2x %d\n",t->macs[BoardToMon][5],t->macs[BoardToMon][5]);
     fLabel7->SetText(sttr); 
     //ResetHistos();
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[y*4+x]->Reset();}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Reset();}
 
 }
 
