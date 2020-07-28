@@ -292,12 +292,12 @@ Double_t mppc1( Double_t *xx, Double_t *par) // from http://zeus.phys.uconn.edu/
 
 void FEBDAQMULT(const char *iface="eth1")
 {
-    // if(Init(iface)==0) return;
+    if(Init(iface)==0) return;
     FEBGUI();
-    // UpdateConfig();
-    // fNumberEntry8869->SetLimitValues(0,t->nclients-1);
-    // for(int feb=0; feb<t->nclients; feb++)  VCXO_Values[feb]=VCXO_Value;
-    // UpdateBoardMonitor(); 
+    UpdateConfig();
+    fNumberEntry8869->SetLimitValues(0,t->nclients-1);
+    for(int feb=0; feb<t->nclients; feb++)  VCXO_Values[feb]=VCXO_Value;
+    // UpdateBoardMonitor();
 }
 
 void ConfigSetBit(UChar_t *buffer, UShort_t bitlen, UShort_t bit_index, Bool_t value)
@@ -353,20 +353,21 @@ void UpdateConfig()
         t->SendCMD(t->dstmac,FEB_WR_PMR,0x0000,bufPMR);
         t->SendCMD(t->dstmac,FEB_WR_FIL,0x0000,bufFIL);
 
-        if(feb==BoardToMon)  {
-            for(int i=265; i<265+32;i++)
-                if(ConfigGetBit(bufSCR,1144,i)) fChanEnaTrig[feb][i-265]->SetOn(); else fChanEnaTrig[feb][i-265]->SetOn(kFALSE);
-            if(ConfigGetBit(bufSCR,1144,1139)) fChanEnaTrig[feb][32]->SetOn(); else fChanEnaTrig[feb][32]->SetOn(kFALSE);
-            for(int i=0; i<32;i++)
-                if(ConfigGetBit(bufSCR,1144,633+i*15)) fChanEnaAmp[feb][i]->SetOn(kFALSE); else fChanEnaAmp[feb][i]->SetOn();
-            fChanEnaAmp[feb][33]->SetOn(kFALSE);fChanEnaAmp[feb][32]->SetOn(kFALSE);
-            for(int i=0; i<32;i++)
-                if(ConfigGetBit(bufPMR,224,96+i)) fChanProbe[feb][i]->SetOn(); else fChanProbe[feb][i]->SetOn(kFALSE);
-            fNumberEntry755->SetNumber(GetThresholdDAC1());
-            for(int i=0; i<32;i++) fChanGain[feb][i]->SetNumber(ConfigGetGain(i));
-            for(int i=0; i<32;i++) fChanBias[feb][i]->SetNumber(ConfigGetBias(i));
+        // Print some debug information.
+        std::cout << "In UpdateConfig(). BoardToMon value " << BoardToMon << "." << std::endl;
 
-        }
+        for(int i=265; i<265+32;i++)
+            if(ConfigGetBit(bufSCR,1144,i)) fChanEnaTrig[feb][i-265]->SetOn(); else fChanEnaTrig[feb][i-265]->SetOn(kFALSE);
+        if(ConfigGetBit(bufSCR,1144,1139)) fChanEnaTrig[feb][32]->SetOn(); else fChanEnaTrig[feb][32]->SetOn(kFALSE);
+        for(int i=0; i<32;i++)
+            if(ConfigGetBit(bufSCR,1144,633+i*15)) fChanEnaAmp[feb][i]->SetOn(kFALSE); else fChanEnaAmp[feb][i]->SetOn();
+        fChanEnaAmp[feb][33]->SetOn(kFALSE);fChanEnaAmp[feb][32]->SetOn(kFALSE);
+        for(int i=0; i<32;i++)
+            if(ConfigGetBit(bufPMR,224,96+i)) fChanProbe[feb][i]->SetOn(); else fChanProbe[feb][i]->SetOn(kFALSE);
+        fNumberEntry755->SetNumber(GetThresholdDAC1());
+        for(int i=0; i<32;i++) fChanGain[feb][i]->SetNumber(ConfigGetGain(i));
+        for(int i=0; i<32;i++) fChanBias[feb][i]->SetNumber(ConfigGetBias(i));
+
     }
     //fNumberEntry755->SetNumber();
 }
@@ -470,6 +471,7 @@ extern "C" {
         if(fTab683->GetCurrent() <= 6) BoardToMon = 0;
         else BoardToMon = 1;
         fNumberEntry8869->SetNumber(BoardToMon);
+        UpdateBoardMonitor();
     }
 }
 
@@ -529,7 +531,7 @@ void RescanNet()
     UpdateConfig();
     fNumberEntry8869->SetLimitValues(0,t->nclients-1);
     for(int feb=0; feb<t->nclients; feb++)  VCXO_Values[feb]=VCXO_Value;
-    UpdateBoardMonitor(); 
+    // UpdateBoardMonitor();
 
 }
 
@@ -1049,7 +1051,7 @@ void UpdateVCXOAllFEBs()
 
 void UpdateBoardMonitor()
 {
-    BoardToMon=fNumberEntry8869->GetNumber();  
+    // BoardToMon=fNumberEntry8869->GetNumber(); 
     char sttr[32];
     sprintf(sttr,"Mon FEB 0x%2x %d",t->macs[BoardToMon][5],t->macs[BoardToMon][5]);
     printf("Monitoring FEB mac5 0x%2x %d\n",t->macs[BoardToMon][5],t->macs[BoardToMon][5]);
@@ -1281,22 +1283,22 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str,"ch%d",i);
-        fChanEnaAmp[BoardToMon][i] = new TGCheckButton(fButtonGroup2,str);
-        fChanEnaAmp[BoardToMon][i]->SetTextJustify(36);
-        fChanEnaAmp[BoardToMon][i]->SetMargins(0,0,0,0);
-        fChanEnaAmp[BoardToMon][i]->SetWrapLength(-1);
-        fChanEnaAmp[BoardToMon][i]->SetCommand("SendConfig()");
+        fChanEnaAmp[0][i] = new TGCheckButton(fButtonGroup2,str);
+        fChanEnaAmp[0][i]->SetTextJustify(36);
+        fChanEnaAmp[0][i]->SetMargins(0,0,0,0);
+        fChanEnaAmp[0][i]->SetWrapLength(-1);
+        fChanEnaAmp[0][i]->SetCommand("SendConfig()");
     }
-    fChanEnaAmp[BoardToMon][32] = new TGCheckButton(fButtonGroup2,"All");
-    fChanEnaAmp[BoardToMon][32]->SetTextJustify(36);
-    fChanEnaAmp[BoardToMon][32]->SetMargins(0,0,0,0);
-    fChanEnaAmp[BoardToMon][32]->SetWrapLength(-1);
-    fChanEnaAmp[BoardToMon][32]->SetCommand("SendAllChecked()");
-    fChanEnaAmp[BoardToMon][33] = new TGCheckButton(fButtonGroup2,"None");
-    fChanEnaAmp[BoardToMon][33]->SetTextJustify(36);
-    fChanEnaAmp[BoardToMon][33]->SetMargins(0,0,0,0);
-    fChanEnaAmp[BoardToMon][33]->SetWrapLength(-1);
-    fChanEnaAmp[BoardToMon][33]->SetCommand("SendAllUnChecked()");
+    fChanEnaAmp[0][32] = new TGCheckButton(fButtonGroup2,"All");
+    fChanEnaAmp[0][32]->SetTextJustify(36);
+    fChanEnaAmp[0][32]->SetMargins(0,0,0,0);
+    fChanEnaAmp[0][32]->SetWrapLength(-1);
+    fChanEnaAmp[0][32]->SetCommand("SendAllChecked()");
+    fChanEnaAmp[0][33] = new TGCheckButton(fButtonGroup2,"None");
+    fChanEnaAmp[0][33]->SetTextJustify(36);
+    fChanEnaAmp[0][33]->SetMargins(0,0,0,0);
+    fChanEnaAmp[0][33]->SetWrapLength(-1);
+    fChanEnaAmp[0][33]->SetCommand("SendAllUnChecked()");
 
     fCompositeFrame686->AddFrame(fButtonGroup2, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
     fButtonGroup2->Show();
@@ -1305,17 +1307,17 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str,"ch%d",i);
-        fChanEnaTrig[BoardToMon][i] = new TGCheckButton(fButtonGroup3,str);
-        fChanEnaTrig[BoardToMon][i]->SetTextJustify(36);
-        fChanEnaTrig[BoardToMon][i]->SetMargins(0,0,0,0);
-        fChanEnaTrig[BoardToMon][i]->SetWrapLength(-1);
-        fChanEnaTrig[BoardToMon][i]->SetCommand("SendConfig()");
+        fChanEnaTrig[0][i] = new TGCheckButton(fButtonGroup3,str);
+        fChanEnaTrig[0][i]->SetTextJustify(36);
+        fChanEnaTrig[0][i]->SetMargins(0,0,0,0);
+        fChanEnaTrig[0][i]->SetWrapLength(-1);
+        fChanEnaTrig[0][i]->SetCommand("SendConfig()");
     }
-    fChanEnaTrig[BoardToMon][32] = new TGCheckButton(fButtonGroup3,"OR32");
-    fChanEnaTrig[BoardToMon][32]->SetTextJustify(36);
-    fChanEnaTrig[BoardToMon][32]->SetMargins(0,0,0,0);
-    fChanEnaTrig[BoardToMon][32]->SetWrapLength(-1);
-    fChanEnaTrig[BoardToMon][32]->SetCommand("SendConfig()");
+    fChanEnaTrig[0][32] = new TGCheckButton(fButtonGroup3,"OR32");
+    fChanEnaTrig[0][32]->SetTextJustify(36);
+    fChanEnaTrig[0][32]->SetMargins(0,0,0,0);
+    fChanEnaTrig[0][32]->SetWrapLength(-1);
+    fChanEnaTrig[0][32]->SetCommand("SendConfig()");
 
     fCompositeFrame686->AddFrame(fButtonGroup3, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
     fButtonGroup3->Show();
@@ -1325,21 +1327,21 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str,"ch%d",i);
-        fChanProbe[BoardToMon][i] = new TGRadioButton(fButtonGroup1,str);
-        fChanProbe[BoardToMon][i]->SetTextJustify(36);
-        fChanProbe[BoardToMon][i]->SetMargins(0,0,0,0);
-        fChanProbe[BoardToMon][i]->SetWrapLength(-1);
-        fChanProbe[BoardToMon][i]->SetCommand("SendConfig()");
+        fChanProbe[0][i] = new TGRadioButton(fButtonGroup1,str);
+        fChanProbe[0][i]->SetTextJustify(36);
+        fChanProbe[0][i]->SetMargins(0,0,0,0);
+        fChanProbe[0][i]->SetWrapLength(-1);
+        fChanProbe[0][i]->SetCommand("SendConfig()");
     }
-    fChanProbe[BoardToMon][32] = new TGRadioButton(fButtonGroup1,"None");
-    fChanProbe[BoardToMon][32]->SetTextJustify(36);
-    fChanProbe[BoardToMon][32]->SetMargins(0,0,0,0);
-    fChanProbe[BoardToMon][32]->SetWrapLength(-1);
-    fChanProbe[BoardToMon][32]->SetCommand("SendConfig()");
+    fChanProbe[0][32] = new TGRadioButton(fButtonGroup1,"None");
+    fChanProbe[0][32]->SetTextJustify(36);
+    fChanProbe[0][32]->SetMargins(0,0,0,0);
+    fChanProbe[0][32]->SetWrapLength(-1);
+    fChanProbe[0][32]->SetCommand("SendConfig()");
     fCompositeFrame686->AddFrame(fButtonGroup1, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
     fButtonGroup1->SetRadioButtonExclusive(kTRUE);
     fButtonGroup1->Show();
-    fChanProbe[BoardToMon][4]->SetOn();
+    fChanProbe[0][4]->SetOn();
 
     // TGGroupFrame* fGainsGroup = new TGGroupFrame(
     TGGroupFrame* fGains=new TGGroupFrame(fCompositeFrame686,"HG preamp gain/bias");
@@ -1348,15 +1350,15 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str," CH %d",i);
-        fChanGain[BoardToMon][i] = new TGNumberEntry(fGains, (Double_t) i,2,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,64);
-        fChanGain[BoardToMon][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
-        fChanGain[BoardToMon][i]->SetHeight(20);
-        fChanBias[BoardToMon][i] = new TGNumberEntry(fGains, (Double_t) i,3,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,256);
-        fChanBias[BoardToMon][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
-        fChanBias[BoardToMon][i]->SetHeight(20);
+        fChanGain[0][i] = new TGNumberEntry(fGains, (Double_t) i,2,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,64);
+        fChanGain[0][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
+        fChanGain[0][i]->SetHeight(20);
+        fChanBias[0][i] = new TGNumberEntry(fGains, (Double_t) i,3,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,256);
+        fChanBias[0][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
+        fChanBias[0][i]->SetHeight(20);
         fGains->AddFrame(new TGLabel(fGains,str));
-        fGains->AddFrame(fChanGain[BoardToMon][i]);
-        fGains->AddFrame(fChanBias[BoardToMon][i]);
+        fGains->AddFrame(fChanGain[0][i]);
+        fGains->AddFrame(fChanBias[0][i]);
 
     }
     fCompositeFrame686->AddFrame(fGains, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
@@ -1458,22 +1460,22 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str2,"ch%d",i);
-        fChanEnaAmp[BoardToMon][i] = new TGCheckButton(fButtonGroup22,str2);
-        fChanEnaAmp[BoardToMon][i]->SetTextJustify(36);
-        fChanEnaAmp[BoardToMon][i]->SetMargins(0,0,0,0);
-        fChanEnaAmp[BoardToMon][i]->SetWrapLength(-1);
-        fChanEnaAmp[BoardToMon][i]->SetCommand("SendConfig()");
+        fChanEnaAmp[1][i] = new TGCheckButton(fButtonGroup22,str2);
+        fChanEnaAmp[1][i]->SetTextJustify(36);
+        fChanEnaAmp[1][i]->SetMargins(0,0,0,0);
+        fChanEnaAmp[1][i]->SetWrapLength(-1);
+        fChanEnaAmp[1][i]->SetCommand("SendConfig()");
     }
-    fChanEnaAmp[BoardToMon][32] = new TGCheckButton(fButtonGroup22,"All");
-    fChanEnaAmp[BoardToMon][32]->SetTextJustify(36);
-    fChanEnaAmp[BoardToMon][32]->SetMargins(0,0,0,0);
-    fChanEnaAmp[BoardToMon][32]->SetWrapLength(-1);
-    fChanEnaAmp[BoardToMon][32]->SetCommand("SendAllChecked()");
-    fChanEnaAmp[BoardToMon][33] = new TGCheckButton(fButtonGroup22,"None");
-    fChanEnaAmp[BoardToMon][33]->SetTextJustify(36);
-    fChanEnaAmp[BoardToMon][33]->SetMargins(0,0,0,0);
-    fChanEnaAmp[BoardToMon][33]->SetWrapLength(-1);
-    fChanEnaAmp[BoardToMon][33]->SetCommand("SendAllUnChecked()");
+    fChanEnaAmp[1][32] = new TGCheckButton(fButtonGroup22,"All");
+    fChanEnaAmp[1][32]->SetTextJustify(36);
+    fChanEnaAmp[1][32]->SetMargins(0,0,0,0);
+    fChanEnaAmp[1][32]->SetWrapLength(-1);
+    fChanEnaAmp[1][32]->SetCommand("SendAllChecked()");
+    fChanEnaAmp[1][33] = new TGCheckButton(fButtonGroup22,"None");
+    fChanEnaAmp[1][33]->SetTextJustify(36);
+    fChanEnaAmp[1][33]->SetMargins(0,0,0,0);
+    fChanEnaAmp[1][33]->SetWrapLength(-1);
+    fChanEnaAmp[1][33]->SetCommand("SendAllUnChecked()");
 
     fCompositeFrame6862->AddFrame(fButtonGroup22, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
     fButtonGroup22->Show();
@@ -1482,17 +1484,17 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str2,"ch%d",i);
-        fChanEnaTrig[BoardToMon][i] = new TGCheckButton(fButtonGroup32,str2);
-        fChanEnaTrig[BoardToMon][i]->SetTextJustify(36);
-        fChanEnaTrig[BoardToMon][i]->SetMargins(0,0,0,0);
-        fChanEnaTrig[BoardToMon][i]->SetWrapLength(-1);
-        fChanEnaTrig[BoardToMon][i]->SetCommand("SendConfig()");
+        fChanEnaTrig[1][i] = new TGCheckButton(fButtonGroup32,str2);
+        fChanEnaTrig[1][i]->SetTextJustify(36);
+        fChanEnaTrig[1][i]->SetMargins(0,0,0,0);
+        fChanEnaTrig[1][i]->SetWrapLength(-1);
+        fChanEnaTrig[1][i]->SetCommand("SendConfig()");
     }
-    fChanEnaTrig[BoardToMon][32] = new TGCheckButton(fButtonGroup32,"OR32");
-    fChanEnaTrig[BoardToMon][32]->SetTextJustify(36);
-    fChanEnaTrig[BoardToMon][32]->SetMargins(0,0,0,0);
-    fChanEnaTrig[BoardToMon][32]->SetWrapLength(-1);
-    fChanEnaTrig[BoardToMon][32]->SetCommand("SendConfig()");
+    fChanEnaTrig[1][32] = new TGCheckButton(fButtonGroup32,"OR32");
+    fChanEnaTrig[1][32]->SetTextJustify(36);
+    fChanEnaTrig[1][32]->SetMargins(0,0,0,0);
+    fChanEnaTrig[1][32]->SetWrapLength(-1);
+    fChanEnaTrig[1][32]->SetCommand("SendConfig()");
 
     fCompositeFrame6862->AddFrame(fButtonGroup32, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
     fButtonGroup32->Show();
@@ -1502,21 +1504,21 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str2,"ch%d",i);
-        fChanProbe[BoardToMon][i] = new TGRadioButton(fButtonGroup12,str2);
-        fChanProbe[BoardToMon][i]->SetTextJustify(36);
-        fChanProbe[BoardToMon][i]->SetMargins(0,0,0,0);
-        fChanProbe[BoardToMon][i]->SetWrapLength(-1);
-        fChanProbe[BoardToMon][i]->SetCommand("SendConfig()");
+        fChanProbe[1][i] = new TGRadioButton(fButtonGroup12,str2);
+        fChanProbe[1][i]->SetTextJustify(36);
+        fChanProbe[1][i]->SetMargins(0,0,0,0);
+        fChanProbe[1][i]->SetWrapLength(-1);
+        fChanProbe[1][i]->SetCommand("SendConfig()");
     }
-    fChanProbe[BoardToMon][32] = new TGRadioButton(fButtonGroup12,"None");
-    fChanProbe[BoardToMon][32]->SetTextJustify(36);
-    fChanProbe[BoardToMon][32]->SetMargins(0,0,0,0);
-    fChanProbe[BoardToMon][32]->SetWrapLength(-1);
-    fChanProbe[BoardToMon][32]->SetCommand("SendConfig()");
+    fChanProbe[1][32] = new TGRadioButton(fButtonGroup12,"None");
+    fChanProbe[1][32]->SetTextJustify(36);
+    fChanProbe[1][32]->SetMargins(0,0,0,0);
+    fChanProbe[1][32]->SetWrapLength(-1);
+    fChanProbe[1][32]->SetCommand("SendConfig()");
     fCompositeFrame6862->AddFrame(fButtonGroup12, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
     fButtonGroup12->SetRadioButtonExclusive(kTRUE);
     fButtonGroup12->Show();
-    fChanProbe[BoardToMon][4]->SetOn();
+    fChanProbe[1][4]->SetOn();
 
     // TGGroupFrame* fGainsGroup = new TGGroupFrame(
     TGGroupFrame* fGains2=new TGGroupFrame(fCompositeFrame6862,"HG preamp gain/bias");
@@ -1525,15 +1527,15 @@ void FEBGUI()
     for(int i=0;i<32;i++)
     {
         sprintf(str2," CH %d",i);
-        fChanGain[BoardToMon][i] = new TGNumberEntry(fGains2, (Double_t) i,2,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,64);
-        fChanGain[BoardToMon][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
-        fChanGain[BoardToMon][i]->SetHeight(20);
-        fChanBias[BoardToMon][i] = new TGNumberEntry(fGains2, (Double_t) i,3,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,256);
-        fChanBias[BoardToMon][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
-        fChanBias[BoardToMon][i]->SetHeight(20);
+        fChanGain[1][i] = new TGNumberEntry(fGains2, (Double_t) i,2,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,64);
+        fChanGain[1][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
+        fChanGain[1][i]->SetHeight(20);
+        fChanBias[1][i] = new TGNumberEntry(fGains2, (Double_t) i,3,-1,(TGNumberFormat::EStyle) 0,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 2,0,256);
+        fChanBias[1][i]->Connect("ValueSet(Long_t)", 0, 0,  "SendConfig()");
+        fChanBias[1][i]->SetHeight(20);
         fGains2->AddFrame(new TGLabel(fGains2,str2));
-        fGains2->AddFrame(fChanGain[BoardToMon][i]);
-        fGains2->AddFrame(fChanBias[BoardToMon][i]);
+        fGains2->AddFrame(fChanGain[1][i]);
+        fGains2->AddFrame(fChanBias[1][i]);
 
     }
     fCompositeFrame6862->AddFrame(fGains2, new TGLayoutHints(kLHintsLeft | kLHintsTop,2,2,2,2));
