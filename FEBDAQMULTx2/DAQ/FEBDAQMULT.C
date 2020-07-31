@@ -130,6 +130,7 @@
 int NEVDISP=200; //number of lines in the waterfall event display
 int nboard_detected = 0; // number of boards detected on the internet
                          // so as to decouple the GUI code from the device code.
+int GUI_VERBOSE = 0; // verbosity level of this GUI app
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
 Double_t peaks[maxpe]; //positions of peaks in ADC counts
@@ -168,7 +169,7 @@ UChar_t bufSCR[1500];
 UChar_t buf[1500];
 TH1F * hst[nboard][32];
 TCanvas *c=0;
-TCanvas *c_2=0;
+TCanvas *c_1=0;
 TCanvas *c1=0;
 TCanvas *c3=0;
 TCanvas *c4=0;
@@ -214,7 +215,7 @@ void ConfigSetFIL(uint32_t mask1, uint32_t mask2, uint8_t majority);
 UInt_t GrayToBin(UInt_t n)
 {
     UInt_t res=0;
-    int a[32],b[32],i=0,c=0,c_2=0;
+    int a[32],b[32],i=0,c=0,c_1=0;
 
     for(i=0; i<32; i++){
         if((n & 0x80000000)>0) a[i]=1;
@@ -253,13 +254,13 @@ Double_t mppc0( Double_t *xx, Double_t *par)
     Double_t xtalk=par[6]; //x-talk factor
     Double_t x=xx[0]; //argument  in ADC counts
 
-    for(int i=0; i<=maxpe; i++)
+    for(int i=0; i<maxpe; i++)
     {
         peaks[i]=zero+gain*i;
         peaksint[i]=TMath::Poisson(i,avnpe);
         if(i>=2) peaksint[i]=peaksint[i]+peaksint[i-1]*xtalk;
     }
-    for(int i=0; i<=maxpe; i++)
+    for(int i=0; i<maxpe; i++)
     {
         retval+=peaksint[i]*(TMath::Gaus(x,peaks[i],sqrt(noise*noise+i*exess), kTRUE));
         // retval+=TMath::Gaus(x,peaks[i],noise, kTRUE);
@@ -290,9 +291,10 @@ Double_t mppc1( Double_t *xx, Double_t *par) // from http://zeus.phys.uconn.edu/
 
 
 
-void FEBDAQMULT(const char *iface="eth1")
+void FEBDAQMULT(const char *iface="eth1", int verbosity = 0)
 {
     if(Init(iface)==0) return;
+    GUI_VERBOSE = verbosity; // my utility for debug messages
     FEBGUI();
     UpdateConfig();
     fNumberEntry8869->SetLimitValues(0,t->nclients-1);
@@ -354,7 +356,7 @@ void UpdateConfig()
         t->SendCMD(t->dstmac,FEB_WR_FIL,0x0000,bufFIL);
 
         // Print some debug information.
-        std::cout << "In UpdateConfig(). BoardToMon value " << BoardToMon << "." << std::endl;
+        if(GUI_VERBOSE) std::cout << "In UpdateConfig(). BoardToMon value " << BoardToMon << "." << std::endl;
 
         for(int i=265; i<265+32;i++)
             if(ConfigGetBit(bufSCR,1144,i)) fChanEnaTrig[feb][i-265]->SetOn(); else fChanEnaTrig[feb][i-265]->SetOn(kFALSE);
@@ -555,7 +557,7 @@ int Init(const char *iface="eth1")
     for(int i=0;i<32;i++)
         for(int feb = 0; feb < nboard; feb++)
         {
-            sprintf(str1,"h%d",i);
+            sprintf(str1,"h%d_%d",i, feb);
             sprintf(str2,"ADC # %d",i);
             hst[feb][i]=new TH1F(str1,str2,820,0,4100);
             hst[feb][i]->GetXaxis()->SetTitle("ADC value");
@@ -641,14 +643,21 @@ void FillHistos(int truncat)  // hook called by libFEBDTP when event is received
             {
                 adc=*(UShort_t*)(&(t->gpkt).Data[jj]); jj++; jj++;  
                 //		printf("%04u ",adc);
-                if(t->dstmac[5] == t->macs[BoardToMon][5])
-                { 
-                    hst[BoardToMon][kk]->Fill(adc);
-                    hcprof->Fill(kk,adc);
-                    if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==6) {   
-                        hevdisp->SetBinContent(kk,NEVDISP,adc);
+                
+                // Loop through all devices and put data to corresponding containers.
+                for(int feb = 0; feb < t->nclients; feb++)
+                {
+                    // SetDstMacByIndex(feb);
+                    if(t->dstmac[5] == t->macs[feb][5])
+                    { 
+                        hst[feb][kk]->Fill(adc);
+                        hcprof->Fill(kk,adc);
+                        if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==6) {   
+                            hevdisp->SetBinContent(kk,NEVDISP,adc);
+                        }
                     }
                 }
+                // SetDstMacByIndex(BoardToMon);
                 chg[kk]=adc;
             } //if(jj>=(truncat-18)) return;}
             else {chg[kk]=0; jj+=2;}
@@ -686,9 +695,10 @@ void FillHistos(int truncat)  // hook called by libFEBDTP when event is received
 void UpdateHisto()
 {
     chan=fNumberEntry886->GetNumber();
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[0][y*4+x]->Draw();}
     c->Update();
-    c_2->Update();
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c_1->cd(y*4+x+1); gPad->SetLogy(); hst[1][y*4+x]->Draw();}
+    c_1->Update();
     c1->cd(); hst[BoardToMon][chan]->Draw();
     c1->Update();
     c3->cd(1);
@@ -739,7 +749,7 @@ void StartDAQ(int nev=0)
 
 void DAQ(int nev=0)
 {
-    char str1[32];
+    char str1[64];
     char str2[32];
     evs=0;
     int nevv=nev;
@@ -767,6 +777,7 @@ void DAQ(int nev=0)
         BenchMark->Reset();
         BenchMark->Start("Poll");
         //Perform VCXO correction
+        if(GUI_VERBOSE) std::cout << "Perform VCXO correction." << std::endl;
         for(int feb=0; feb<t->nclients; feb++)
         { 
             if(ts0_ref_IND[t->macs[feb][5]]>=20) 
@@ -796,6 +807,7 @@ void DAQ(int nev=0)
         else fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff3333);
 
         //    fLabel->SetText(str1);
+        if(GUI_VERBOSE) std::cout << "Event buffer data request..." << std::endl;
         fStatusBar739->SetText(str1,0);
         for(int feb=0; feb<t->nclients; feb++)
         {
@@ -803,9 +815,10 @@ void DAQ(int nev=0)
             mac5=t->dstmac[5];
             ok=t->SendCMD(t->dstmac,FEB_RD_CDR,0,buf);
         }
+        if(GUI_VERBOSE) std::cout << "Successfully sent data request to event buffer." << std::endl;
 
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==1) {   
-            for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
+            for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[0][y*4+x]->Draw();}
             c->Update();
         }
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==2) {   
@@ -846,6 +859,10 @@ void DAQ(int nev=0)
             hevdisp->Draw("colz");
             c6->Update();
         }
+        if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==8) {
+            for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c_1->cd(y*4+x+1); gPad->SetLogy(); hst[1][y*4+x]->Draw();}
+            c_1->Update();
+        }
 
 
 
@@ -881,7 +898,9 @@ void DAQ(int nev=0)
         evsperrequest=0;
         tm1=time(NULL);
 
-    }
+    } // One of the escaping condition from the while loop is RunOn==0,
+      // Which can be trigger by pressing the Stop DAQ button.
+
     fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffffff); 
     fStatusBar739->GetBarPart(1)->SetBackgroundColor(0xffffff); 
     fStatusBar739->GetBarPart(2)->SetBackgroundColor(0xffffff); 
@@ -893,9 +912,12 @@ void DAQ(int nev=0)
     printf("Overal per DAQ call: %d events acquired, %d (%2.1f\%%) lost (skipping first request).\n",evs,total_lost, (100.*total_lost/(evs+total_lost)));
     sprintf(str1, "Overal: %d acquired, %d (%2.1f\%%) lost",evs,total_lost, (100.*total_lost/(evs+total_lost)));
     fStatusBar739->SetText(str1,5);
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
-    c->Update();
 
+    // Update all histogram tab after a run is stopped.
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[0][y*4+x]->Draw();}
+    c->Update();
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c_1->cd(y*4+x+1); gPad->SetLogy(); hst[1][y*4+x]->Draw();}
+    c_1->Update();
 
 }
 
@@ -904,8 +926,10 @@ void Reset()
     for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Reset();}
     c1->cd(); hst[BoardToMon][chan]->Draw();
     c1->Update();
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[BoardToMon][y*4+x]->Draw();}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[0][y*4+x]->Draw();}
     c->Update();
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c_1->cd(y*4+x+1); gPad->SetLogy(); hst[1][y*4+x]->Draw();}
+    c_1->Update();
     tr->Reset();
     evs=0;
     total_lost=0;
@@ -1060,7 +1084,7 @@ void UpdateBoardMonitor()
     printf("Monitoring FEB mac5 0x%2x %d\n",t->macs[BoardToMon][5],t->macs[BoardToMon][5]);
     fLabel7->SetText(sttr); 
     //ResetHistos();
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Reset();}
+    // for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Reset();}
 
 }
 
@@ -1252,7 +1276,7 @@ void FEBGUI()
     fGroupFrame679->AddFrame(fLabel769, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX,2,2,30,2));
     fNumberEntry8869 = new TGNumberEntry(fGroupFrame679, (Double_t) 0,3,-1,(TGNumberFormat::EStyle) 5,(TGNumberFormat::EAttribute) 1,(TGNumberFormat::ELimit) 3,0,255);
     fGroupFrame679->AddFrame(fNumberEntry8869, new TGLayoutHints(kLHintsExpandX | kLHintsCenterX ));
-    // fNumberEntry8869->SetCommand("UpdateBoardMonitor()");
+
     fNumberEntry8869->Connect("ValueSet(Long_t)", 0, 0,  "UpdateBoardMonitor()");
     // Diable the ability to modify the value.
     fNumberEntry8869->SetState(kFALSE);
@@ -1555,9 +1579,9 @@ void FEBGUI()
     // embedded canvas
     TRootEmbeddedCanvas *fRootEmbeddedCanvas7212 = new TRootEmbeddedCanvas(0,fCompositeFrame7202,1179,732+100);
     Int_t wfRootEmbeddedCanvas7212 = fRootEmbeddedCanvas7212->GetCanvasWindowId();
-    c_2 = new TCanvas("c_2", 10, 10, wfRootEmbeddedCanvas7212);    c_2->Divide(4,8);
+    c_1 = new TCanvas("c_1", 10, 10, wfRootEmbeddedCanvas7212);    c_1->Divide(4,8);
 
-    fRootEmbeddedCanvas7212->AdoptCanvas(c_2);
+    fRootEmbeddedCanvas7212->AdoptCanvas(c_1);
     fCompositeFrame7202->AddFrame(fRootEmbeddedCanvas7212, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
     
     // End of my modification **************************************************
@@ -1688,7 +1712,7 @@ bool UpdateFW(char *fname=NULL)
     printf("Opening FW file %s..\n",fname);
     FILE *fp=fopen(fname,"r");
     if(!fp) return 0;
-    fread(fwbuf,1024,1024,fp);
+    int count = fread(fwbuf,1024,1024,fp);
     fclose(fp);
     printf("Programming first 64 kB into FLASH addr 0x20000..\n");
     retval=ProgramFW(0x20000,64); //put FW into safe area
@@ -1714,7 +1738,7 @@ bool UpdateFPGA(char *fname=NULL)
     printf("Opening FW file %s..\n",fname);
     FILE *fp=fopen(fname,"r");
     if(!fp) return 0;
-    fread(fwbuf,1024,1024,fp);
+    int count = fread(fwbuf,1024,1024,fp);
     fclose(fp);
     printf("Programming 512 kB into FLASH addr 0x80000..\n");
     // ProgramFW(0x80000,512); //put FW into second half of the FLASH
