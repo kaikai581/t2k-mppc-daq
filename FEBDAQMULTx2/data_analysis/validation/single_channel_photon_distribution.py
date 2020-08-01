@@ -1,7 +1,16 @@
 #!/usr/bin/env python
 
 import argparse
+import sys
 import uproot
+
+def plot_32_channels(df, feb_id):
+    pass
+
+def single_channel_plot(df, feb_id, ch):
+    if not feb_id in df.feb_num.unique():
+        print('Board ID does not exist.')
+        sys.exit(-1)
 
 def main():
     # command line arguments
