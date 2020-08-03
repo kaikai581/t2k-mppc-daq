@@ -6,12 +6,25 @@ import numpy as np
 import os, sys
 import uproot
 
+def board_trigger_rate(df, feb_id):
+
+    # select data of the specified board
+    df_1b = df[df['feb_num'] == feb_id]
+
+    # get maximum and minimum time stamps
+    ntrigs = len(df_1b)
+    ts0_min = df_1b['ts0'].min()
+    ts0_max = df_1b['ts0'].max()
+    rate0 = ntrigs/(ts0_max-ts0_min)
+    ts1_min = df_1b['ts1'].min()
+    ts1_max = df_1b['ts1'].max()
+    rate1 = ntrigs/(ts1_max-ts1_min)
+    print('board {}: rate0 {:.2e} rate1 {:.2e}'.format(feb_id, rate0, rate1))
+    print('max time0: {}\nmin time0: {}'.format(ts0_max, ts0_min))
+    print('max time1: {}\nmin time1: {}'.format(ts1_max, ts1_min))
+
 def plot_32_channels(df, feb_id):
-    # argument safeguard
-    if not feb_id in df.feb_num.unique():
-        print('Board ID does not exist.')
-        sys.exit(-1)
-    
+
     # select data of the specified board
     df_1b = df[df['feb_num'] == feb_id]
     bins = np.linspace(0, 4100, 821)
@@ -32,7 +45,8 @@ def plot_32_channels(df, feb_id):
         cur_ax.set_xlabel('ADC')
         cur_ax.set_ylabel('')
         cur_ax.set_yscale('log')
-        cur_ax.text(0.7, 0.6,'FEB {} ch {}'.format(feb_id, ch), ha='center', va='center', transform=cur_ax.transAxes, color='r')
+        cur_ax.text(0.7, 0.6,'FEB {} ch {}'.format(feb_id, ch), ha='center',
+                    va='center', transform=cur_ax.transAxes, color='r')
     
     plt.tight_layout()
 
@@ -44,9 +58,6 @@ def plot_32_channels(df, feb_id):
 
 def single_channel_plot(df, feb_id, ch):
     # argument safeguard
-    if not feb_id in df.feb_num.unique():
-        print('Board ID does not exist.')
-        sys.exit(-1)
     chvar = 'chg[{}]'.format(ch)
     if not chvar in df.columns:
         print('Channel {} has no data!'.format(ch))
@@ -85,11 +96,16 @@ def main():
     # add a row for FEB board ID according to the mac5 value
     mac5s = list(df.mac5.unique())
     df['feb_num'] = df['mac5'].apply(lambda x: mac5s.index(x))
+    # argument safeguard
+    if not board_id in df.feb_num.unique():
+        print('Board ID {} does not exist.'.format(board_id))
+        sys.exit(-1)
     
     if channel >= 0:
         single_channel_plot(df, board_id, channel)
     else:
         plot_32_channels(df, board_id)
+        board_trigger_rate(df, board_id)
 
 if __name__ == '__main__':
     main()
