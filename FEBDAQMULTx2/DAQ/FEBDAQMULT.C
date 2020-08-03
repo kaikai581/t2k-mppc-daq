@@ -129,7 +129,8 @@
 #define nboard 2 // number of boards in this system
 int NEVDISP=200; //number of lines in the waterfall event display
 int nboard_detected = 0; // number of boards detected on the internet
-                         // so as to decouple the GUI code from the device code.
+                         // so as to decouple the GUI code from the device code
+UShort_t thr_vals[nboard]; // variables to store threshold values for each board
 int GUI_VERBOSE = 0; // verbosity level of this GUI app
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
@@ -171,6 +172,7 @@ TH1F * hst[nboard][32];
 TCanvas *c=0;
 TCanvas *c_1=0;
 TCanvas *c1=0;
+TCanvas *c1_1=0;
 TCanvas *c3=0;
 TCanvas *c4=0;
 TCanvas *c5=0;
@@ -366,7 +368,12 @@ void UpdateConfig()
         fChanEnaAmp[feb][33]->SetOn(kFALSE);fChanEnaAmp[feb][32]->SetOn(kFALSE);
         for(int i=0; i<32;i++)
             if(ConfigGetBit(bufPMR,224,96+i)) fChanProbe[feb][i]->SetOn(); else fChanProbe[feb][i]->SetOn(kFALSE);
-        fNumberEntry755->SetNumber(GetThresholdDAC1());
+        
+        // read the threshold from file and store it to various containers
+        UShort_t thr = GetThresholdDAC1();
+        fNumberEntry755->SetNumber(thr);
+        for(int feb = 0; feb < t->nclients; feb++) thr_vals[feb] = thr;
+
         for(int i=0; i<32;i++) fChanGain[feb][i]->SetNumber(ConfigGetGain(i));
         for(int i=0; i<32;i++) fChanBias[feb][i]->SetNumber(ConfigGetBias(i));
 
@@ -467,12 +474,37 @@ void SendConfig()
     // }
 }
 
+void SaveAsDialog()
+{
+    // define some variables
+    const char *rcfiletypes[] = {
+        "All files",     "*",
+        0,               0
+    };
+    TString rcdir(".");
+    TString rcfile(".everc");
+
+    TGFileInfo fi;
+    fi.fFileTypes = rcfiletypes;
+    fi.SetIniDir(rcdir);
+    fi.SetFilename(rcfile);
+    new TGFileDialog(gClient->GetRoot(), 0, kFDSave, &fi);
+    if (fi.fFilename) {
+        rcfile = fi.fFilename;
+    }
+    rcdir = fi.fIniDir;
+
+    // save tree to file
+    tr->SaveAs(fi.fFilename);
+}
+
 extern "C" {
     void SelectBoard()
     {
         if(fTab683->GetCurrent() <= 6) BoardToMon = 0;
         else BoardToMon = 1;
-        fNumberEntry8869->SetNumber(BoardToMon);
+        fNumberEntry8869->SetNumber(BoardToMon); // number entry for board ID
+        fNumberEntry755->SetNumber(thr_vals[BoardToMon]); // number entry for threshold setting
         UpdateBoardMonitor();
     }
 }
@@ -591,6 +623,9 @@ int Init(const char *iface="eth1")
 
     BenchMark=new TBenchmark();
     BenchMark->Start("Poll");
+    // initialize the threshold container variable
+    for(int feb = 0; feb < nboard; feb++) thr_vals[feb] = 0;
+
     return 1;
 }
 
@@ -699,8 +734,10 @@ void UpdateHisto()
     c->Update();
     for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c_1->cd(y*4+x+1); gPad->SetLogy(); hst[1][y*4+x]->Draw();}
     c_1->Update();
-    c1->cd(); hst[BoardToMon][chan]->Draw();
+    c1->cd(); hst[0][chan]->Draw();
     c1->Update();
+    c1_1->cd(); hst[1][chan]->Draw();
+    c1_1->Update();
     c3->cd(1);
     gts0[t->macs[0][5]]->Draw("AL");
     gts0[t->macs[0][5]]->GetHistogram()->GetYaxis()->SetRangeUser(-100,100);
@@ -822,7 +859,7 @@ void DAQ(int nev=0)
             c->Update();
         }
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==2) {   
-            c1->cd(); hst[BoardToMon][chan]->Draw();
+            c1->cd(); hst[0][chan]->Draw();
             c1->Update();
         }
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==3) {   
@@ -862,6 +899,10 @@ void DAQ(int nev=0)
         if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==8) {
             for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c_1->cd(y*4+x+1); gPad->SetLogy(); hst[1][y*4+x]->Draw();}
             c_1->Update();
+        }
+        if(fUpdateHisto->IsOn() && fTab683->GetCurrent()==9) {   
+            c1_1->cd(); hst[1][chan]->Draw();
+            c1_1->Update();
         }
 
 
@@ -924,8 +965,10 @@ void DAQ(int nev=0)
 void Reset()
 {
     for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Reset();}
-    c1->cd(); hst[BoardToMon][chan]->Draw();
+    c1->cd(); hst[0][chan]->Draw();
     c1->Update();
+    c1_1->cd(); hst[1][chan]->Draw();
+    c1_1->Update();
     for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c->cd(y*4+x+1); gPad->SetLogy(); hst[0][y*4+x]->Draw();}
     c->Update();
     for(int y=0;y<8;y++) for(int x=0;x<4;x++) {c_1->cd(y*4+x+1); gPad->SetLogy(); hst[1][y*4+x]->Draw();}
@@ -1003,7 +1046,9 @@ void ThresholdScan(UShort_t start, UShort_t stop)
         gr->SetPoint(i,thr,GetTriggerRate());
         i++;
         c1->cd(); gr->Draw("AL");
-        c1->Update(); 
+        c1->Update();
+        c1_1->cd(); gr->Draw("AL");
+        c1_1->Update();
     }
 }
 
@@ -1052,19 +1097,22 @@ void SetThresholdDAC2(UShort_t dac1)
 }
 
 
-
 void GUI_UpdateThreshold()
 {
     UShort_t dac1;
     dac1=fNumberEntry755->GetNumber();
     //	for(int feb=0; feb<t->nclients; feb++)
     //	{
-    //	SetDstMacByIndex(feb);
-    t->dstmac[5]=0xff; //Broadcast
+    SetDstMacByIndex(BoardToMon);
+    // t->dstmac[5]=0xff; //Broadcast
     SetThresholdDAC1(dac1);
     SetThresholdDAC2(dac1);
     //        }
+
+    // assign threshold value to buffer variable as well
+    thr_vals[BoardToMon] = dac1;
 }
+
 void GUI_UpdateVCXO()
 {
     t->VCXO=fNumberEntry75->GetNumber();
@@ -1262,6 +1310,8 @@ void FEBGUI()
     fTextButton111->Resize(123,22);
     fGroupFrame679->AddFrame(fTextButton111, new TGLayoutHints(kLHintsLeft| kLHintsCenterX  | kLHintsTop | kLHintsExpandX,0,0,2,2));
     fTextButton111->SetCommand("tr->SaveAs(\"mppc.root\");");
+    // bring up a dialog for a file name at will
+    // fTextButton111->SetCommand("SaveAsDialog");
 
     fLabel7 = new TGLabel(fGroupFrame679,"0xHH");
     fLabel7->SetTextJustify(36);
@@ -1583,6 +1633,18 @@ void FEBGUI()
 
     fRootEmbeddedCanvas7212->AdoptCanvas(c_1);
     fCompositeFrame7202->AddFrame(fRootEmbeddedCanvas7212, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
+
+    // container of "One channel"
+    TGCompositeFrame *fCompositeFrame7352;
+    fCompositeFrame7352 = fTab683->AddTab("One channel 2");
+    fCompositeFrame7352->SetLayoutManager(new TGVerticalLayout(fCompositeFrame7352));
+
+    // embedded canvas
+    TRootEmbeddedCanvas *fRootEmbeddedCanvas7362 = new TRootEmbeddedCanvas(0,fCompositeFrame7352,1179,732+100);
+    Int_t wfRootEmbeddedCanvas7362 = fRootEmbeddedCanvas7362->GetCanvasWindowId();
+    c1_1 = new TCanvas("c1_1", 10, 10, wfRootEmbeddedCanvas7362);
+    fRootEmbeddedCanvas7362->AdoptCanvas(c1_1);
+    fCompositeFrame7352->AddFrame(fRootEmbeddedCanvas7362, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
     
     // End of my modification **************************************************
     //**************************************************************************
