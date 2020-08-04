@@ -122,6 +122,7 @@
 #include "TSystem.h"
 #include "TTree.h"
 #include "time.h"
+#include <chrono>
 #include <sys/timeb.h>
 #include "FEBDTP.hxx"
 
@@ -131,6 +132,7 @@ int NEVDISP=200; //number of lines in the waterfall event display
 int nboard_detected = 0; // number of boards detected on the internet
                          // so as to decouple the GUI code from the device code
 UShort_t thr_vals[nboard]; // variables to store threshold values for each board
+float rate[nboard]; // variables to store trigger rates for each board
 int GUI_VERBOSE = 0; // verbosity level of this GUI app
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
@@ -476,26 +478,36 @@ void SendConfig()
 
 void SaveAsDialog()
 {
+    // check if a tree exists already
+    if(!tr)
+    {
+        std::cout << "No data to save!" << std::endl;
+        return;
+    }
+
     // define some variables
     const char *rcfiletypes[] = {
         "All files",     "*",
         0,               0
     };
-    TString rcdir(".");
-    TString rcfile(".everc");
+    char* rcdir = (char*)".";
+    char* rcfile = (char*)".everc";
 
     TGFileInfo fi;
     fi.fFileTypes = rcfiletypes;
-    fi.SetIniDir(rcdir);
-    fi.SetFilename(rcfile);
-    new TGFileDialog(gClient->GetRoot(), 0, kFDSave, &fi);
+    fi.fIniDir = rcdir;
+    fi.fFilename = rcfile;
+    std::cout << "1 " << fi.fFilename << std::endl;
+    new TGFileDialog(gClient->GetRoot(), gClient->GetRoot(), kFDSave, &fi);
+    // new TGFileDialog(0, 0, kFDSave, &fi);
+    std::cout << "2 " << fi.fFilename << std::endl;
     if (fi.fFilename) {
         rcfile = fi.fFilename;
     }
     rcdir = fi.fIniDir;
-
+    std::cout << "3 " << fi.fFilename << std::endl;
     // save tree to file
-    tr->SaveAs(fi.fFilename);
+    // tr->SaveAs(fi.fFilename);
 }
 
 extern "C" {
@@ -506,6 +518,18 @@ extern "C" {
         fNumberEntry8869->SetNumber(BoardToMon); // number entry for board ID
         fNumberEntry755->SetNumber(thr_vals[BoardToMon]); // number entry for threshold setting
         UpdateBoardMonitor();
+
+        // show most recent trigger rate stored
+        // set color according to the rate
+        if(rate[BoardToMon]<3.6) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xbbffbb);
+        else if (rate[BoardToMon]<5.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffbbbb);
+        else if (rate[BoardToMon]<7.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff9999);
+        else if (rate[BoardToMon]<10.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff7777);
+        else fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff3333);
+        // show the rate
+        char str1[64];
+        sprintf(str1,"Trigger %2.3f kHz",rate[BoardToMon]);
+        fStatusBar739->SetText(str1, 0);
     }
 }
 
@@ -554,6 +578,7 @@ Bool_t NOts0=false,NOts1=false;
 UInt_t ts0_ref_mon, ts1_ref_mon;
 Bool_t NOts0_mon=false,NOts1_mon=false;
 //UChar_t mac5=0x00;
+Long_t ns_epoch; // My variable. Nanoseconds since epoch.
 
 void RescanNet()
 {
@@ -620,6 +645,7 @@ int Init(const char *iface="eth1")
     tr->Branch("ts1",&ts1,"ts1/i");
     tr->Branch("ts0_ref",&ts0_ref,"ts0_ref/i");
     tr->Branch("ts1_ref",&ts1_ref,"ts1_ref/i");
+    tr->Branch("ns_epoch", &ns_epoch, "ns_epoch/L");
 
     BenchMark=new TBenchmark();
     BenchMark->Start("Poll");
@@ -710,6 +736,10 @@ void FillHistos(int truncat)  // hook called by libFEBDTP when event is received
         // printf("Filling tree with mac5=0x%02x\n",mac5);
         gts0[mac5]->SetPoint(gts0[mac5]->GetN(),gts0[mac5]->GetN(),ts0_ref-1e9);
         if(ts1!=0) gts1[mac5]->SetPoint(gts1[mac5]->GetN(),gts1[mac5]->GetN(),ts1);
+
+        // before fill the tree, store the time stamp as recorded by the current application
+        auto curtime = std::chrono::high_resolution_clock::now();
+        ns_epoch = curtime.time_since_epoch().count();
         tr->Fill();
         if(t->dstmac[5] == t->macs[BoardToMon][5])
         {
@@ -799,7 +829,6 @@ void DAQ(int nev=0)
     total_lost=0;
     RunOn=1;
     float PollPeriod;
-    float rate;
     //  UpdateConfig();
     // t->SendCMD(t->dstmac,FEB_GEN_HVON,0,buf);
     // printf("nevv=%d, evs=%d\n",nevv,evs);
@@ -833,14 +862,14 @@ void DAQ(int nev=0)
 
         }
         chan=fNumberEntry886->GetNumber();
-        rate=GetTriggerRate()/1e3;
-        sprintf(str1,"Trigger %2.3f kHz",rate);
-        grevrate->SetPoint(grevrate->GetN(),grevrate->GetN(),rate); 
+        rate[BoardToMon]=GetTriggerRate()/1e3;
+        sprintf(str1,"Trigger %2.3f kHz",rate[BoardToMon]);
+        grevrate->SetPoint(grevrate->GetN(),grevrate->GetN(),rate[BoardToMon]); 
 
-        if(rate<3.6) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xbbffbb);
-        else if (rate<5.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffbbbb);
-        else if (rate<7.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff9999);
-        else if (rate<10.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff7777);
+        if(rate[BoardToMon]<3.6) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xbbffbb);
+        else if (rate[BoardToMon]<5.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffbbbb);
+        else if (rate[BoardToMon]<7.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff9999);
+        else if (rate[BoardToMon]<10.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff7777);
         else fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xff3333);
 
         //    fLabel->SetText(str1);
@@ -1311,7 +1340,7 @@ void FEBGUI()
     fGroupFrame679->AddFrame(fTextButton111, new TGLayoutHints(kLHintsLeft| kLHintsCenterX  | kLHintsTop | kLHintsExpandX,0,0,2,2));
     fTextButton111->SetCommand("tr->SaveAs(\"mppc.root\");");
     // bring up a dialog for a file name at will
-    // fTextButton111->SetCommand("SaveAsDialog");
+    // fTextButton111->SetCommand("SaveAsDialog()");
 
     fLabel7 = new TGLabel(fGroupFrame679,"0xHH");
     fLabel7->SetTextJustify(36);
@@ -1635,16 +1664,16 @@ void FEBGUI()
     fCompositeFrame7202->AddFrame(fRootEmbeddedCanvas7212, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
 
     // container of "One channel"
-    TGCompositeFrame *fCompositeFrame7352;
-    fCompositeFrame7352 = fTab683->AddTab("One channel 2");
-    fCompositeFrame7352->SetLayoutManager(new TGVerticalLayout(fCompositeFrame7352));
+    TGCompositeFrame *fCompositeFrame735_1;
+    fCompositeFrame735_1 = fTab683->AddTab("One channel 2");
+    fCompositeFrame735_1->SetLayoutManager(new TGVerticalLayout(fCompositeFrame735_1));
 
     // embedded canvas
-    TRootEmbeddedCanvas *fRootEmbeddedCanvas7362 = new TRootEmbeddedCanvas(0,fCompositeFrame7352,1179,732+100);
-    Int_t wfRootEmbeddedCanvas7362 = fRootEmbeddedCanvas7362->GetCanvasWindowId();
-    c1_1 = new TCanvas("c1_1", 10, 10, wfRootEmbeddedCanvas7362);
-    fRootEmbeddedCanvas7362->AdoptCanvas(c1_1);
-    fCompositeFrame7352->AddFrame(fRootEmbeddedCanvas7362, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
+    TRootEmbeddedCanvas *fRootEmbeddedCanvas736_1 = new TRootEmbeddedCanvas(0,fCompositeFrame735_1,1179,732+100);
+    Int_t wfRootEmbeddedCanvas736_1 = fRootEmbeddedCanvas736_1->GetCanvasWindowId();
+    c1_1 = new TCanvas("c1_1", 10, 10, wfRootEmbeddedCanvas736_1);
+    fRootEmbeddedCanvas736_1->AdoptCanvas(c1_1);
+    fCompositeFrame735_1->AddFrame(fRootEmbeddedCanvas736_1, new TGLayoutHints(kLHintsLeft | kLHintsTop | kLHintsExpandX | kLHintsExpandY,2,2,2,2));
     
     // End of my modification **************************************************
     //**************************************************************************
