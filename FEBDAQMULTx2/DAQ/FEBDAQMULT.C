@@ -1680,10 +1680,8 @@ void FEBGUI()
 
     // If only one board is detected, disable tabs reserved for additional ones.
     if(nboard_detected == 1)
-    {
-        fTab683->SetEnabled(7, kFALSE);
-        fTab683->SetEnabled(8, kFALSE);
-    }
+        for(int tab_id = 7; tab_id < fTab683->GetNumberOfTabs(); tab_id++)
+            fTab683->SetEnabled(tab_id, kFALSE);
 
     fTab683->SetTab(2);
 
