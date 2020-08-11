@@ -124,6 +124,7 @@
 #include "time.h"
 #include <chrono>
 #include <sys/timeb.h>
+#include <unistd.h>
 #include "FEBDTP.hxx"
 
 #define maxpe 10 //max number of photoelectrons to use in the fit
@@ -204,6 +205,7 @@ void SetThresholdDAC1(UShort_t dac1);
 UShort_t GetThresholdDAC1();
 void SetThresholdDAC2(UShort_t dac2);
 int Init(const char* iface);
+std::string get_current_dir();
 float GetTriggerRate();
 void UpdateConfig();
 void UpdateHisto();
@@ -414,6 +416,28 @@ void ConfigSetGain(int chan, UChar_t val)
         mask=mask>>1;
     } 
 
+}
+
+// Bring up a control application for power unit, etc.
+void ControlApp()
+{
+    // find the project's root folder and the script to run
+    std::string proj_root = get_current_dir();
+    if(proj_root.find("FEBDAQMULTx2") > 0)
+        proj_root = proj_root.substr(0, proj_root.find("FEBDAQMULTx2")+12);
+    else // if the standard path is not found, use relative path and hope for the best
+        proj_root = std::string("..");
+    
+    // The following command does not work because the script is run with
+    // superuser which does not have anaconda set up by default.
+    // std::string script_fpn = proj_root + "/power-control/main_control.py";
+    // std::string cmd = "sudo -u hepr2018 python " + script_fpn + " &";
+
+    // Use a bash script instead that sets up the environment before running the
+    // main python script.
+    std::string script_fpn = proj_root + "/power-control/setup_and_run.sh";
+    std::string cmd = "bash " + script_fpn + " &";
+    gSystem->Exec(cmd.c_str());
 }
 
 void ConfigSetBias(int chan, UChar_t val)
@@ -1368,6 +1392,23 @@ void FEBGUI()
     fGroupFrame679->AddFrame(fTextButton1188, new TGLayoutHints(kLHintsLeft| kLHintsCenterX  | kLHintsTop | kLHintsExpandX,0,0,2,2));
     fTextButton1188->SetCommand("RescanNet()");
 
+    //**************************************************************************
+    // My editing:
+    // Add a button to bring up the control application for other components,
+    // such as the poswer unit and the function generator.
+    TGTextButton *fTextButton1189 = new TGTextButton(fGroupFrame679,
+                                                     "Power Control");
+    fTextButton1189->SetTextJustify(36);
+    fTextButton1189->SetMargins(0,0,0,0);
+    fTextButton1189->SetWrapLength(-1);
+    fTextButton1189->Resize(123,22);
+    fGroupFrame679->AddFrame(fTextButton1189, new TGLayoutHints(kLHintsLeft |
+                             kLHintsCenterX  | kLHintsTop |
+                             kLHintsExpandX,0,0,2,2));
+    fTextButton1189->SetCommand("ControlApp()");
+    // End of my editing.
+    //**************************************************************************
+
 
 
     // tab widget
@@ -1724,6 +1765,13 @@ uint8_t getCRC(uint8_t message[], uint32_t length)
         }
     }
     return crc;
+}
+
+std::string get_current_dir() {
+   char buff[FILENAME_MAX]; //create string buffer to hold path
+   char* tmpstr = getcwd( buff, FILENAME_MAX );
+   std::string current_working_dir(buff);
+   return current_working_dir;
 }
 
 int FW_ptr=0;
