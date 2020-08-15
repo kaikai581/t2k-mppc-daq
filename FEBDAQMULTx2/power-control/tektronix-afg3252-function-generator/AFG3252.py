@@ -104,6 +104,12 @@ class AFG3252(FunctionGenerator):
 
         except Exception as e:
             print(e)
+    
+    def recallWaveform(self, slot):
+        if slot > 4 or slot < 0:
+            print('Save state {} does not exist'.format(slot))
+        else:
+            self.conn.write('*RCL {}'.format(slot))
 
     def outputPolarity(self, ch, sigPolarity):
         if 1 <= ch <= 2:

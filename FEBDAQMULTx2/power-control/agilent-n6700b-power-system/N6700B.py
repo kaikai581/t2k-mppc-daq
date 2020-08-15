@@ -44,5 +44,14 @@ class N6700B(PowerSystem):
     def power_on(self, ch):
         self.conn.write('OUTP ON,(@{})'.format(ch))
     
+    # voltage readback
+    # ref: http://literature.cdn.keysight.com/litweb/pdf/N6700-90902.pdf (Not working)
+    # page 76
+    # http://ridl.cfd.rit.edu/products/manuals/Agilent/power%20supplies/CD1/Model/N6700usr.pdf
+    # p 76 says " All settings commands have a corresponding query."
+    def query_voltage(self, ch):
+        vol_rb = self.conn.ask('VOLT? (@{})'.format(ch))
+        return vol_rb
+    
     def set_voltage(self, ch, v):
         self.conn.write('VOLT {},(@{})'.format(v, ch))
