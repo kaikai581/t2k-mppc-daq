@@ -11,7 +11,7 @@ from AFG3252 import AFG3252
 from N6700B import N6700B
 from PyQt5 import QtCore
 from PyQt5 import QtGui
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
@@ -31,12 +31,13 @@ class Window(QWidget):
         self.puVoltageSwitch = QPushButton(text='Switch On')
         self.puVoltageSwitch.setCheckable(True)
         self.puVoltageSwitch.clicked.connect(self.puPowerSwitch)
-        self.puChEdit = QComboBox()
-        self.puChEdit.addItems(['all', '1', '2', '3', '4'])
-        self.puChEdit.setCurrentIndex(4)
-        self.puChEdit.setEnabled(False)
+        self.puChCB = QComboBox()
+        self.puChCB.addItems(['all', '1', '2', '3', '4'])
+        self.puChCB.setCurrentIndex(4)
+        self.puChCB.setEnabled(False)
         self.puVsetEdit = QLineEdit('58')
         self.puVsetEdit.setValidator(QDoubleValidator(bottom=0, top=60, decimals=10))
+        self.puVRbEdit = QLineEdit()
 
         # function generator stars with fg
         self.fgChSel = QComboBox()
@@ -72,7 +73,7 @@ class Window(QWidget):
         self.setLayout(grid)
 
         self.setWindowTitle('MPPC Slow Control App')
-        self.resize(600, 300)
+        self.resize(800, 00)
 
         # use a figure as this app's icon
         # ref: https://stackoverflow.com/questions/42602713/how-to-set-a-window-icon-with-pyqt5
@@ -81,6 +82,9 @@ class Window(QWidget):
 
         # use a timer for voltage readback
         # ref: https://pythonpyqt.com/qtimer/
+        self.timer = QTimer()
+        self.timer.start(2000)
+        self.timer.timeout.connect(self.puReadbackVoltage)
 
     def createPulserControl(self):
         groupBox = QGroupBox('Tektronix AFG3252 Function Generator')
@@ -90,11 +94,11 @@ class Window(QWidget):
         grid.addWidget(self.fgChSel, 0, 1)
         grid.addWidget(QLabel('Recall Waveform: '), 1, 0, Qt.AlignRight)
         grid.addWidget(self.fgRecallChSel, 1, 1)
-        grid.addWidget(QLabel('Pulse Frequency: '), 2, 0, Qt.AlignRight)
+        grid.addWidget(QLabel('Set Pulse Frequency: '), 2, 0, Qt.AlignRight)
         grid.addWidget(self.fgFreqEdit, 2, 1)
         grid.addWidget(QLabel('kHz'), 2, 2)
         grid.addWidget(self.fgFreqBtn, 2, 3)
-        grid.addWidget(QLabel('Pulse Amplitude: '), 3, 0, Qt.AlignRight)
+        grid.addWidget(QLabel('Set Pulse Amplitude: '), 3, 0, Qt.AlignRight)
         grid.addWidget(self.fgAmplEdit, 3, 1)
         grid.addWidget(QLabel('Vpp'), 3, 2)
         grid.addWidget(self.fgAmplBtn, 3, 3)
@@ -109,12 +113,12 @@ class Window(QWidget):
 
         grid = QGridLayout()
         grid.addWidget(QLabel('Output Channel: '), 0, 0, Qt.AlignRight)
-        grid.addWidget(self.puChEdit, 0, 1)
+        grid.addWidget(self.puChCB, 0, 1)
         grid.addWidget(QLabel('Voltage Set: '), 1, 0, Qt.AlignRight)
         grid.addWidget(self.puVsetEdit, 1, 1)
         grid.addWidget(QLabel('V'), 1, 2)
         grid.addWidget(QLabel('Voltage Read: '), 2, 0, Qt.AlignRight)
-        grid.addWidget(QLineEdit(), 2, 1)
+        grid.addWidget(self.puVRbEdit, 2, 1)
         grid.addWidget(QLabel('V'), 2, 2)
         grid.addWidget(self.puVoltageSwitch, 3, 2)
 
@@ -149,14 +153,19 @@ class Window(QWidget):
         self.devFunGen.setFrequency('{} kHz'.format(freq))
 
     def fgRecallState(self):
-        sel_ch = int(self.fgRecallChSel.currentText())
-        self.devFunGen.recallWaveform(sel_ch)
+        sel_state = int(self.fgRecallChSel.currentText())
+        self.devFunGen.recallWaveform(sel_state)
+        freq = float(self.devFunGen.querySetFrequency())/1000.
+        self.fgFreqEdit.setText(('{:10.9f}'.format(freq)).strip())
+        sel_ch = int(self.fgChSel.currentText())
+        amp = float(self.devFunGen.querySetAmplitude(sel_ch))
+        self.fgAmplEdit.setText(('{:10.4f}'.format(amp)).strip())
 
     def puPowerSwitch(self):
         # get the active channel
-        active_ch = int(self.puChEdit.currentText())
+        active_ch = int(self.puChCB.currentText())
 
-        # if button is checked 
+        # if button is checked
         if self.puVoltageSwitch.isChecked(): 
             # voltage safeguard
             vol_uplim = 60
@@ -165,19 +174,25 @@ class Window(QWidget):
                 print('Input voltage {} V is too high!'.format(vol_uplim))
                 return
             
-            # setting background color to light-blue 
+            # setting background color to light-blue
             self.puVoltageSwitch.setStyleSheet("background-color : lightgreen")
             self.puVoltageSwitch.setText('Switch Off')
+            self.puVsetEdit.setEnabled(False)
             self.devPowerUnit.set_voltage(active_ch, Vset)
             self.devPowerUnit.power_on(active_ch)
   
-        # if it is unchecked 
-        else: 
+        # if it is unchecked
+        else:
   
-            # set background color back to light-grey 
+            # set background color back to light-grey
             self.puVoltageSwitch.setStyleSheet("background-color : lightgrey")
             self.puVoltageSwitch.setText('Switch On')
+            self.puVsetEdit.setEnabled(True)
             self.devPowerUnit.power_off(active_ch)
+    
+    def puReadbackVoltage(self):
+        Vrb = float(self.devPowerUnit.query_voltage(self.puChCB.currentText()))
+        self.puVRbEdit.setText(('{:10.4f}'.format(Vrb)).lstrip())
 
 
 if __name__ == '__main__':

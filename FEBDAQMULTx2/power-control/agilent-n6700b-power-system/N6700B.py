@@ -44,12 +44,20 @@ class N6700B(PowerSystem):
     def power_on(self, ch):
         self.conn.write('OUTP ON,(@{})'.format(ch))
     
-    # voltage readback
+    # The command I thought was querying voltage readback is actually
+    # reading the Vset.
+    # Here is where I find the correct answer.
+    # https://community.keysight.com/thread/22236
+    def query_voltage(self, ch):
+        vol_rb = self.conn.ask('MEAS:VOLT? (@{})'.format(ch))
+        return vol_rb
+
+    # voltage SET readback
     # ref: http://literature.cdn.keysight.com/litweb/pdf/N6700-90902.pdf (Not working)
     # page 76
     # http://ridl.cfd.rit.edu/products/manuals/Agilent/power%20supplies/CD1/Model/N6700usr.pdf
     # p 76 says " All settings commands have a corresponding query."
-    def query_voltage(self, ch):
+    def query_voltage_set(self, ch):
         vol_rb = self.conn.ask('VOLT? (@{})'.format(ch))
         return vol_rb
     

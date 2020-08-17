@@ -105,6 +105,17 @@ class AFG3252(FunctionGenerator):
         except Exception as e:
             print(e)
     
+    def querySetAmplitude(self, ch):
+        if 1 <= ch <= 2:
+            return self.conn.ask('SOURCE{0}:VOLTAGE:LEVEL:IMMEDIATE:AMPLITUDE?'.format(ch))
+        else:
+            print('I don\'t have channel {0}'.format(ch))
+        return
+
+    def querySetFrequency(self):
+        # print('Query set frequency')
+        return self.conn.ask('SOUR:FREQ:FIX?')
+    
     def recallWaveform(self, slot):
         if slot > 4 or slot < 0:
             print('Save state {} does not exist'.format(slot))
