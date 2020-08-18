@@ -51,10 +51,13 @@ def plot_32_channels(df, feb_id):
     plt.tight_layout()
 
     # save to file
-    outfdname = os.path.join(os.path.splitext(infpn)[0], 'all_channels')
+    outfdname = os.path.join(os.path.dirname(__file__), infn)
+    outfdname = os.path.join(os.path.splitext(outfdname)[0], 'all_channels')
     if not os.path.exists(outfdname):
         os.makedirs(outfdname)
-    plt.savefig(os.path.join(outfdname, 'board{}.png'.format(feb_id)))
+    outfig_pn = os.path.join(outfdname, 'board{}.png'.format(feb_id))
+    print('Saving output to {}'.format(outfig_pn))
+    plt.savefig(outfig_pn)
 
 def single_channel_plot(df, feb_id, ch):
     # argument safeguard
@@ -69,13 +72,16 @@ def single_channel_plot(df, feb_id, ch):
     df_1b[chvar].plot.hist(bins=bins, histtype='step')
     
     # prepare for output
-    outfdname = os.path.join(os.path.splitext(infpn)[0], 'single_channel')
+    outfdname = os.path.join(os.path.dirname(__file__), infn)
+    outfdname = os.path.join(os.path.splitext(outfdname)[0], 'single_channel')
     if not os.path.exists(outfdname):
         os.makedirs(outfdname)
     
     # save to file
+    outfig_pn = os.path.join(outfdname, 'bd{}ch{}.png'.format(feb_id, ch))
+    print('Saving output to {}'.format(outfig_pn))
     plt.title('board {} channel {}'.format(feb_id, ch))
-    plt.savefig(os.path.join(outfdname, 'bd{}ch{}.png'.format(feb_id, ch)))
+    plt.savefig(outfig_pn)
 
 def main():
     # command line arguments
@@ -91,6 +97,9 @@ def main():
     channel = args.channel
 
     # read data with uproot
+    global infn
+    infn = os.path.basename(infpn)
+    infpn = os.path.join(os.path.dirname(__file__), '../data', infn)
     tr = uproot.open(infpn)['mppc']
     df = tr.pandas.df()
     # add a row for FEB board ID according to the mac5 value
