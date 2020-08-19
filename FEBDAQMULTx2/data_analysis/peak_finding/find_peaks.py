@@ -2,6 +2,7 @@
 
 from scipy.signal import find_peaks
 from matplotlib import markers
+from operator import itemgetter
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,13 +23,41 @@ def find_peak(infpn, feb_id, ch):
     chvar = 'chg[{}]'.format(ch)
     # select data of the specified board
     df_1b = df[df['feb_num'] == feb_id]
+    # make histogram and find peaks
     bins = np.linspace(0, 4100, 821)
-
     _, axs = plt.subplots(2)
     histy, bin_edges, _ = axs[0].hist(df_1b[chvar], bins=bins, histtype='step')
     peaks, _ = find_peaks(histy, prominence=300)
     axs[0].scatter(np.array(bin_edges)[peaks], np.array(histy)[peaks],
                    marker=markers.CARETDOWN, color='r', s=20)
+    axs[0].set_xlabel('ADC value')
+
+    # make the linear plot
+    # try 2 ADC to n_photo map
+    ped_idx = min(enumerate(np.array(bin_edges)[peaks]), key=itemgetter(1))[0]
+    peaks_no_ped = [peaks[i] for i in range(len(peaks)) if i != ped_idx]
+    x_trys = []
+    y_trys = []
+    coeff = []
+    for i in range(2):
+        x_try = np.linspace(1+i, len(peaks_no_ped)+i, len(peaks_no_ped))
+        y_try = sorted(np.array(bin_edges)[peaks_no_ped])
+        x_trys.append(x_try)
+        y_trys.append(y_try)
+        coeff.append(np.polyfit(x_try, y_try, 1))
+    # choose the one with smaller absolute intersection
+    intersecs = [np.abs(c[1]) for c in coeff]
+    correct_idx = min(enumerate(intersecs), key=itemgetter(1))[0]
+    x_try = x_trys[correct_idx]
+    y_try = y_trys[correct_idx]
+    fitx = np.linspace(0, x_try[-1], 100)
+    fity = coeff[correct_idx][0]*fitx + coeff[correct_idx][1]
+    axs[1].plot(fitx, fity, '--g', alpha=.7)
+    axs[1].scatter(x_try, y_try, marker='o', color='r', s=20)
+    axs[1].set_xlim(left=0)
+    axs[1].set_ylim(bottom=0)
+    axs[1].set_xlabel('number of photons')
+    axs[1].set_ylabel('ADC value')
 
     # prepare for output
     infn = os.path.basename(infpn)
@@ -40,9 +69,9 @@ def find_peak(infpn, feb_id, ch):
     # save to file
     outfig_pn = os.path.join(outfdname, 'bd{}ch{}.png'.format(feb_id, ch))
     print('Saving output to {}'.format(outfig_pn))
-    axs[0].title('board {} channel {}'.format(feb_id, ch))
-    plt.show()
-    # plt.savefig(outfig_pn)
+    axs[0].set_title('board {} channel {}'.format(feb_id, ch))
+    plt.tight_layout()
+    plt.savefig(outfig_pn)
 
 
 def main():
