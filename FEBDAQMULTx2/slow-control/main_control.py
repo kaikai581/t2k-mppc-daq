@@ -4,11 +4,20 @@ import os, sys
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                 'agilent-n6700b-power-system'))
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                't2k-temperature-sensor'))
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                 'tektronix-afg3252-function-generator'))
 import socket
 
+# for making plots
+import pyqtgraph as pg
+
+# device API imports
 from AFG3252 import AFG3252
 from N6700B import N6700B
+from T2KTEMPSENSOR import T2KTEMPSENSOR
+
+# PyQt imports
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 from PyQt5.QtCore import Qt, QTimer
@@ -25,6 +34,12 @@ class Window(QWidget):
         self.devFunGen = AFG3252(socket.gethostbyname('192.168.0.101'))
         # power unit
         self.devPowerUnit = N6700B('192.168.0.201')
+        # temperature sensor
+        ## If I open the temperature sensor as a member variable,
+        ## temperature readings will all turn empty after the first reading.
+        ## Don't quite know what happens here. However, opening the connection
+        ## everytime when I want to get readings seems to be a workaround...
+        self.devTempSen = T2KTEMPSENSOR()
 
         # widgets I want to have control ***************************************
         # power unit starts with pu
@@ -59,21 +74,31 @@ class Window(QWidget):
         self.fgAmplEdit.setValidator(QDoubleValidator(decimals=10))
         self.fgAmplBtn = QPushButton(text='Apply')
         self.fgAmplBtn.clicked.connect(self.fgApplyAmpl)
+        # touch the selected state to initialize readings
+        self.fgRecallState()
 
         # a message box
         self.msgBox = QTextEdit()
         self.msgBox.setText('Welcome to the control application!\n')
         self.msgBox.setReadOnly(True)
+
+        # T2K temperature sensor interface
+        self.tsTemperatureCB = QComboBox()
+        self.tsTemperatureCB.addItems(['T0', 'T1', 'T2', 'T3', 'T4'])
+        self.tsTemperatureCB.activated.connect(self.tsReadTemperature)
+        self.tsTemperatureEdit = QLineEdit()
+        self.tsPlot = pg.PlotWidget()
         # end of widgets declaration *******************************************
 
         grid = QGridLayout()
         grid.addWidget(self.createVoltageControl(), 0, 0, 1, 1)
         grid.addWidget(self.createPulserControl(), 0, 1, 1, 1)
         grid.addWidget(self.msgBox, 1, 0, 1, 2)
+        grid.addWidget(self.createTemperatureSensor(), 0, 2, 2, 1)
         self.setLayout(grid)
 
         self.setWindowTitle('MPPC Slow Control App')
-        self.resize(800, 00)
+        self.resize(1000, 300)
 
         # use a figure as this app's icon
         # ref: https://stackoverflow.com/questions/42602713/how-to-set-a-window-icon-with-pyqt5
@@ -85,6 +110,9 @@ class Window(QWidget):
         self.timer = QTimer()
         self.timer.start(2000)
         self.timer.timeout.connect(self.puReadbackVoltage)
+        self.puReadbackVoltage()
+        self.timer.timeout.connect(self.tsReadTemperature)
+        self.tsReadTemperature()
 
     def createPulserControl(self):
         groupBox = QGroupBox('Tektronix AFG3252 Function Generator')
@@ -106,6 +134,19 @@ class Window(QWidget):
 
         groupBox.setLayout(grid)
 
+        return groupBox
+
+    def createTemperatureSensor(self):
+        groupBox = QGroupBox('T2K Temperature Sensor')
+
+        grid = QGridLayout()
+        grid.addWidget(QLabel('Sensor: '), 0, 0)
+        grid.addWidget(self.tsTemperatureCB, 0, 1)
+        grid.addWidget(self.tsTemperatureEdit, 0, 2)
+        grid.addWidget(QLabel(u'\u00B0C'), 0, 3)
+        # grid.addWidget(self.tsPlot, 1, 0, 2, 4)
+
+        groupBox.setLayout(grid)
         return groupBox
 
     def createVoltageControl(self):
@@ -193,6 +234,25 @@ class Window(QWidget):
     def puReadbackVoltage(self):
         Vrb = float(self.devPowerUnit.query_voltage(self.puChCB.currentText()))
         self.puVRbEdit.setText(('{:10.4f}'.format(Vrb)).lstrip())
+    
+    def tsReadTemperature(self):
+        sen_id = self.tsTemperatureCB.currentText()
+
+        ## If I open the temperature sensor as a member variable,
+        ## temperature readings will all turn empty after the first reading.
+        ## Don't quite know what happens here. However, opening the connection
+        ## everytime when I want to get readings seems to be a workaround...
+        # devTempSen = T2KTEMPSENSOR()
+        # temp_readings = devTempSen.query_temperature()
+        temp_readings = self.devTempSen.query_temperature()
+        # print(temp_readings)
+
+        if sen_id in temp_readings.keys():
+            Trb = float(temp_readings[sen_id])
+            self.tsTemperatureEdit.setText('{:10.2f}'.format(Trb).strip())
+        else:
+            self.tsTemperatureEdit.setText('')
+        
 
 
 if __name__ == '__main__':

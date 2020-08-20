@@ -26,6 +26,14 @@ class T2KTEMPSENSOR:
         except Exception as e:
             print(e)
 
+        self.conn.write('run 1\r'.encode())
+    
+    def __del__(self):
+        try:
+            self.conn.write('run 0\r'.encode())
+        except Exception as e:
+            print(e)
+
     def process_readout(self, rb):
         str = rb[rb.find('T'):].strip()
         sen_id = []
@@ -42,11 +50,11 @@ class T2KTEMPSENSOR:
         return temps
 
     def query_temperature(self):
-        self.conn.write('run 1\r'.encode())
+        # self.conn.write('run 1\r'.encode())
         rb = self.conn.readline().decode()
         # flush "run 1" in the returned message
         while 'run 1' in rb:
             rb = self.conn.readline().decode()
         temp_dict = self.process_readout(rb)
-        self.conn.write('run 0\r'.encode())
+        # self.conn.write('run 0\r'.encode())
         return temp_dict
