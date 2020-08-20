@@ -430,12 +430,12 @@ void ControlApp()
     
     // The following command does not work because the script is run with
     // superuser which does not have anaconda set up by default.
-    // std::string script_fpn = proj_root + "/power-control/main_control.py";
+    // std::string script_fpn = proj_root + "/slow-control/main_control.py";
     // std::string cmd = "sudo -u hepr2018 python " + script_fpn + " &";
 
     // Use a bash script instead that sets up the environment before running the
     // main python script.
-    std::string script_fpn = proj_root + "/power-control/setup_and_run.sh";
+    std::string script_fpn = proj_root + "/slow-control/setup_and_run.sh";
     std::string cmd = "bash " + script_fpn + " &";
     gSystem->Exec(cmd.c_str());
 }
@@ -1397,7 +1397,7 @@ void FEBGUI()
     // Add a button to bring up the control application for other components,
     // such as the poswer unit and the function generator.
     TGTextButton *fTextButton1189 = new TGTextButton(fGroupFrame679,
-                                                     "Power Control");
+                                                     "Slow Control");
     fTextButton1189->SetTextJustify(36);
     fTextButton1189->SetMargins(0,0,0,0);
     fTextButton1189->SetWrapLength(-1);
