@@ -12,6 +12,12 @@ import socket
 # for making plots
 import pyqtgraph as pg
 
+# other utilities
+import collections
+import datetime, time
+import numpy as np
+import signal
+
 # device API imports
 from AFG3252 import AFG3252
 from N6700B import N6700B
@@ -23,6 +29,38 @@ from PyQt5 import QtGui
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
+
+
+# helper function for dealing with timestamp axis
+# ref: https://gist.github.com/iverasp/9349dffa42aeffb32e48a0868edfa32d
+def timestamp():
+    return int(time.mktime(datetime.datetime.now().timetuple()))
+
+
+# helper class for dealing with timestamp axis
+# ref: https://gist.github.com/iverasp/9349dffa42aeffb32e48a0868edfa32d
+class TimeAxisItem(pg.AxisItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setLabel(text='Time', units=None)
+        self.enableAutoSIPrefix(False)
+
+    def attachToPlotItem(self, plotItem):
+        """Add this axis to the given PlotItem
+        :param plotItem: (PlotItem)
+        """
+        self.setParentItem(plotItem)
+        viewBox = plotItem.getViewBox()
+        self.linkToView(viewBox)
+        self._oldAxis = plotItem.axes[self.orientation]['item']
+        self._oldAxis.hide()
+        plotItem.axes[self.orientation]['item'] = self
+        pos = plotItem.axes[self.orientation]['pos']
+        plotItem.layout.addItem(self, *pos)
+        self.setZValue(-1000)
+
+    def tickStrings(self, values, scale, spacing):
+        return [datetime.datetime.fromtimestamp(value).strftime("%H:%M") for value in values]
 
 
 class Window(QWidget):
@@ -87,7 +125,17 @@ class Window(QWidget):
         self.tsTemperatureCB.addItems(['T0', 'T1', 'T2', 'T3', 'T4'])
         self.tsTemperatureCB.activated.connect(self.tsReadTemperature)
         self.tsTemperatureEdit = QLineEdit()
-        self.tsPlot = pg.PlotWidget()
+        self.tsView = pg.GraphicsView()
+        self.tsLo = pg.GraphicsLayout()
+        self.tsPlot = None # member variable place holder
+        # below are data structure for plotting
+        self.timerTime = 2000
+        self.tsPoints = 33
+        self.tsX = dict()
+        self.tsY = dict()
+        for sen in ['T0', 'T1', 'T2', 'T3', 'T4']:
+            self.tsX[sen] = collections.deque(maxlen=self.tsPoints)
+            self.tsY[sen] = collections.deque(maxlen=self.tsPoints)
         # end of widgets declaration *******************************************
 
         grid = QGridLayout()
@@ -108,7 +156,7 @@ class Window(QWidget):
         # use a timer for voltage readback
         # ref: https://pythonpyqt.com/qtimer/
         self.timer = QTimer()
-        self.timer.start(2000)
+        self.timer.start(self.timerTime)
         self.timer.timeout.connect(self.puReadbackVoltage)
         self.puReadbackVoltage()
         self.timer.timeout.connect(self.tsReadTemperature)
@@ -144,7 +192,18 @@ class Window(QWidget):
         grid.addWidget(self.tsTemperatureCB, 0, 1)
         grid.addWidget(self.tsTemperatureEdit, 0, 2)
         grid.addWidget(QLabel(u'\u00B0C'), 0, 3)
-        # grid.addWidget(self.tsPlot, 1, 0, 2, 4)
+        grid.addWidget(self.tsView, 1, 0, 2, 4)
+        self.tsView.setCentralItem(self.tsLo)
+        self.tsView.show()
+        self.tsView.resize(200, 100)
+        yaxis = pg.AxisItem('left')
+        yaxis.setLabel(text=u'Temperature (\u00B0C)', units=None)
+        self.tsPlot = self.tsLo.addPlot(axisItems={'bottom': TimeAxisItem(orientation='bottom'), 'left': yaxis})
+        ## Below is how to set axis ranges. If not set, scales change automatically.
+        # self.tsPlot.setYRange(0, 40)
+        # self.tsPlot.setXRange(timestamp(), timestamp() + 100)
+        self.plotCurve = self.tsPlot.plot(pen='b')
+        self.tsView.setBackground('w')
 
         groupBox.setLayout(grid)
         return groupBox
@@ -247,11 +306,22 @@ class Window(QWidget):
         temp_readings = self.devTempSen.query_temperature()
         # print(temp_readings)
 
+        for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']:
+            if sen_it in temp_readings.keys():
+                # store data
+                self.tsX[sen_it].append(timestamp())
+                self.tsY[sen_it].append(float(temp_readings[sen_it]))
+        
         if sen_id in temp_readings.keys():
+            # display reading of the specified channel
             Trb = float(temp_readings[sen_id])
             self.tsTemperatureEdit.setText('{:10.2f}'.format(Trb).strip())
         else:
             self.tsTemperatureEdit.setText('')
+        
+        # update the temperature plot
+        self.plotCurve.setData(list(self.tsX[sen_id]), list(self.tsY[sen_id]), pen=pg.mkPen(color=(0, 0, 255), width=3))
+
         
 
 
