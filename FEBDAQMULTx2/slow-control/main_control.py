@@ -130,7 +130,7 @@ class Window(QWidget):
         self.tsPlot = None # member variable place holder
         # below are data structure for plotting
         self.timerTime = 2000
-        self.tsPoints = 33
+        self.tsPoints = 90
         self.tsX = dict()
         self.tsY = dict()
         for sen in ['T0', 'T1', 'T2', 'T3', 'T4']:
