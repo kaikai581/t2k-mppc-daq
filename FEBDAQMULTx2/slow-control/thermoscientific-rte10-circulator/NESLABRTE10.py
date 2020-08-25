@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import serial
+import serial, struct, sys
 
 class NESLABRTE10:
     '''
@@ -22,6 +22,11 @@ class NESLABRTE10:
         except Exception as e:
             print(e)
     
+    def checksum(self, bstr):
+        barr = bytearray(bstr)
+        barr = barr[1:]
+        return sum(barr) & 0x0FF ^ 0xFF
+
     def read_acknowledge(self):
         # Below is the way to send hexidecimal commands.
         # Source: https://stackoverflow.com/questions/17589942/using-pyserial-to-send-binary-data
@@ -36,6 +41,12 @@ class NESLABRTE10:
         response = self.conn.read(9)
         return response
 
+    def read_setpoint(self):
+        cmd = b'\xca\x00\x01\x70\x00\x8e'
+        self.conn.write(cmd)
+        response = self.conn.read(9)
+        return response
+
     def read_status(self):
         cmd = b'\xca\x00\x01\x09\x00\xf5'
         self.conn.write(cmd)
@@ -45,7 +56,38 @@ class NESLABRTE10:
     def set_low_temperature_limit(self, target):
         # To pack target values, refer to
         # https://stackoverflow.com/questions/19287296/how-to-change-one-byte-int-to-two-bytes-in-python
-        cmd = bytearray()
-        for bs in [0xca, 0x00, 0x01, 0xc0, 0x02]:
-            cmd.append(bs)
-        return cmd
+
+        # The status byte indicates a precision to the first decimal point digit,
+        # so the target value has to be multiplied by 10.
+        cmd = b'\xca\x00\x01\xc0\x02' + struct.pack('>h', target*10)
+        print('Set low temperature limit checksum:', hex(self.checksum(cmd)))
+        cmd += self.checksum(cmd).to_bytes(1, sys.byteorder)
+        # If I naively print out the cmd, the result might not be what I expect.
+        # However, it could be the right answer.
+        # See https://stackoverflow.com/questions/25068477/python-converting-hex-string-to-bytes
+        self.conn.write(cmd)
+        response = self.conn.read(9)
+        return response
+
+    def set_off_array(self):
+        cmd = b'\xca\x00\x01\x81\x08\x00\x02\x02\x02\x02\x02\x02\x02'
+        cmd += self.checksum(cmd).to_bytes(1, sys.byteorder)
+        self.conn.write(cmd)
+        response = self.conn.read(14)
+        return response
+
+    def set_on_array(self):
+        cmd = b'\xca\x00\x01\x81\x08\x01\x02\x02\x02\x02\x02\x02\x02'
+        cmd += self.checksum(cmd).to_bytes(1, sys.byteorder)
+        self.conn.write(cmd)
+        response = self.conn.read(14)
+        return response
+
+    def set_setpoint(self, target):
+        # The status byte indicates a precision to the first decimal point digit,
+        # so the target value has to be multiplied by 10.
+        cmd = b'\xca\x00\x01\xf0\x02' + struct.pack('>h', target*10)
+        cmd += self.checksum(cmd).to_bytes(1, sys.byteorder)
+        self.conn.write(cmd)
+        response = self.conn.read(9)
+        return response
