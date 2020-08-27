@@ -1,0 +1,1 @@
+export DT5702_PATH=/home/hepr2018/sklin/software/t2k-mppc-daq-private/sample_code/caen-dt5702-daq/FEBDAQMULT/DAQ
