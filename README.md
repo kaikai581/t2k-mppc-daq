@@ -1,5 +1,5 @@
 ## Change Log
-On 20200827 I merged my test repo into my production repo to reduce repo redundancy. This project is perfectly fine to be fully open.
+On 20200827 I merged my test repo into my production repo to reduce repo redundancy. This project should be fine to be fully open.
 
 ## t2k-mppc-daq-private
 
