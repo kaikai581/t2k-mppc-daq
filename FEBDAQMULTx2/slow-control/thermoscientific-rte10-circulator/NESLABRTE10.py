@@ -45,7 +45,7 @@ class NESLABRTE10:
         cmd = b'\xca\x00\x01\x70\x00\x8e'
         self.conn.write(cmd)
         response = self.conn.read(9)
-        return response
+        return (int.from_bytes(response[6:8], 'big'))/10.
 
     def read_status(self):
         cmd = b'\xca\x00\x01\x09\x00\xf5'
@@ -86,7 +86,7 @@ class NESLABRTE10:
     def set_setpoint(self, target):
         # The status byte indicates a precision to the first decimal point digit,
         # so the target value has to be multiplied by 10.
-        cmd = b'\xca\x00\x01\xf0\x02' + struct.pack('>h', target*10)
+        cmd = b'\xca\x00\x01\xf0\x02' + struct.pack('>h', int(target*10))
         cmd += self.checksum(cmd).to_bytes(1, sys.byteorder)
         self.conn.write(cmd)
         response = self.conn.read(9)

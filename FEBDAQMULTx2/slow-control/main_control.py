@@ -7,6 +7,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                 't2k-temperature-sensor'))
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                 'tektronix-afg3252-function-generator'))
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                'thermoscientific-rte10-circulator'))
 import socket
 
 # for making plots
@@ -15,6 +17,7 @@ import pyqtgraph as pg
 # other utilities
 import collections
 import datetime, time
+import json
 import numpy as np
 import signal
 
@@ -22,6 +25,7 @@ import signal
 from AFG3252 import AFG3252
 from N6700B import N6700B
 from T2KTEMPSENSOR import T2KTEMPSENSOR
+from NESLABRTE10 import NESLABRTE10
 
 # PyQt imports
 from PyQt5 import QtCore
@@ -138,15 +142,29 @@ class Window(QWidget):
             self.tsY[sen] = collections.deque(maxlen=self.tsPoints)
         # end of widgets declaration *******************************************
 
+        # main window layout
+        # Initialize tab screen
+        self.tabs = QTabWidget()
+        self.tab1 = QWidget()
+        self.tab2 = QWidget()
+        # Add tabs
+        self.tabs.addTab(self.tab1, 'Simple Control')
+        self.tabs.addTab(self.tab2, 'Parameter Scan')
+        self.tab1.layout = QGridLayout()
+        self.tab1.layout.addWidget(self.createVoltageControl(), 0, 0, 1, 1)
+        self.tab1.layout.addWidget(self.createPulserControl(), 0, 1, 1, 1)
+        self.tab1.layout.addWidget(self.createCirculatorControl(), 0, 2, 1, 1)
+        self.tab1.layout.addWidget(self.msgBox, 1, 0, 1, 3)
+        self.tab1.layout.addWidget(self.createTemperatureSensor(), 0, 3, 2, 1)
+        self.tab1.setLayout(self.tab1.layout)
+        self.tab2.setLayout(self.createParameterScan())
         grid = QGridLayout()
-        grid.addWidget(self.createVoltageControl(), 0, 0, 1, 1)
-        grid.addWidget(self.createPulserControl(), 0, 1, 1, 1)
-        grid.addWidget(self.msgBox, 1, 0, 1, 2)
-        grid.addWidget(self.createTemperatureSensor(), 0, 2, 2, 1)
+        grid.addWidget(self.tabs, 0, 0)
         self.setLayout(grid)
+        # end of main window layout
 
         self.setWindowTitle('MPPC Slow Control App')
-        self.resize(1000, 300)
+        self.resize(1200, 300)
 
         # use a figure as this app's icon
         # ref: https://stackoverflow.com/questions/42602713/how-to-set-a-window-icon-with-pyqt5
@@ -161,6 +179,131 @@ class Window(QWidget):
         self.puReadbackVoltage()
         self.timer.timeout.connect(self.tsReadTemperature)
         self.tsReadTemperature()
+
+    def createCirculatorControl(self):
+        # connect to the water circulator
+        self.devWaterCirculator = NESLABRTE10()
+        # member widgets for the water circulator
+        self.wcSetpointEdit = QLineEdit(text=str(self.devWaterCirculator.read_setpoint()))
+        self.wcApplySetpointBtn = QPushButton('Apply')
+        self.wcSwitchBtn = QPushButton('Switch On')
+        self.wcSwitchBtn.setCheckable(True)
+        # event connection
+        self.wcApplySetpointBtn.clicked.connect(self.wcApplySetpoint)
+        self.wcSwitchBtn.clicked.connect(self.wcSwitch)
+
+        # layout of water circulator control panel
+        groupBox = QGroupBox('Thermo Scientific Water Circulator')
+
+        grid = QGridLayout()
+        grid.addWidget(QLabel('Setpoint: '), 0, 0, Qt.AlignRight)
+        grid.addWidget(self.wcSetpointEdit, 0, 1)
+        grid.addWidget(QLabel(u'\u00B0C'), 0, 2)
+        grid.addWidget(self.wcApplySetpointBtn, 0, 3)
+        grid.addWidget(self.wcSwitchBtn, 1, 3)
+
+        groupBox.setLayout(grid)
+
+        return groupBox
+
+    def createParameterScan(self):
+        # member widgets
+        self.parKeys = ['vol', 'feb1dac', 'feb1gain', 'feb1bias', 'feb2dac', 'feb2gain', 'feb2bias', 'temp']
+        self.editParVal = dict()
+        for key in self.parKeys:
+            self.editParVal[key] = dict()
+
+        self.editParVal['vol']['from'] = QLineEdit('58')
+        self.editParVal['vol']['to'] = QLineEdit('60')
+        self.editParVal['vol']['step'] = QLineEdit('1')
+        self.editParVal['feb1dac']['from'] = QLineEdit('230')
+        self.editParVal['feb1dac']['to'] = QLineEdit('250')
+        self.editParVal['feb1dac']['step'] = QLineEdit('5')
+        self.editParVal['feb1gain']['from'] = QLineEdit('50')
+        self.editParVal['feb1gain']['to'] = QLineEdit('60')
+        self.editParVal['feb1gain']['step'] = QLineEdit('5')
+        self.editParVal['feb1bias']['from'] = QLineEdit('190')
+        self.editParVal['feb1bias']['to'] = QLineEdit('200')
+        self.editParVal['feb1bias']['step'] = QLineEdit('5')
+        self.editParVal['feb2dac']['from'] = QLineEdit('230')
+        self.editParVal['feb2dac']['to'] = QLineEdit('250')
+        self.editParVal['feb2dac']['step'] = QLineEdit('5')
+        self.editParVal['feb2gain']['from'] = QLineEdit('50')
+        self.editParVal['feb2gain']['to'] = QLineEdit('60')
+        self.editParVal['feb2gain']['step'] = QLineEdit('5')
+        self.editParVal['feb2bias']['from'] = QLineEdit('190')
+        self.editParVal['feb2bias']['to'] = QLineEdit('200')
+        self.editParVal['feb2bias']['step'] = QLineEdit('5')
+        self.editParVal['temp']['from'] = QLineEdit('18')
+        self.editParVal['temp']['to'] = QLineEdit('22')
+        self.editParVal['temp']['step'] = QLineEdit('1')
+        self.scanBut = QPushButton(text='Start Scan')
+        self.scanBut.clicked.connect(self.sendJsonMsg)
+
+        grid = QGridLayout()
+        grid.addWidget(QLabel('Include'), 0, 0, Qt.AlignCenter)
+        grid.addWidget(QLabel('Parameter'), 0, 1, Qt.AlignCenter)
+        grid.addWidget(QLabel('From'), 0, 2, 1, 2, Qt.AlignCenter)
+        grid.addWidget(QLabel('To'), 0, 4, 1, 2, Qt.AlignCenter)
+        grid.addWidget(QLabel('Step'), 0, 6, 1, 2, Qt.AlignCenter)
+
+        grid.addWidget(QLabel('Voltage'), 1, 1)
+        grid.addWidget(self.editParVal['vol']['from'], 1, 2)
+        grid.addWidget(QLabel('V'), 1, 3)
+        grid.addWidget(self.editParVal['vol']['to'], 1, 4)
+        grid.addWidget(QLabel('V'), 1, 5)
+        grid.addWidget(self.editParVal['vol']['step'], 1, 6)
+        grid.addWidget(QLabel('V'), 1, 7)
+        
+        grid.addWidget(QLabel('FEB1 DAC'), 2, 1)
+        grid.addWidget(self.editParVal['feb1dac']['from'], 2, 2)
+        grid.addWidget(self.editParVal['feb1dac']['to'], 2, 4)
+        grid.addWidget(self.editParVal['feb1dac']['step'], 2, 6)
+
+        grid.addWidget(QLabel('FEB1 Gain'), 3, 1)
+        grid.addWidget(self.editParVal['feb1gain']['from'], 3, 2)
+        grid.addWidget(self.editParVal['feb1gain']['to'], 3, 4)
+        grid.addWidget(self.editParVal['feb1gain']['step'], 3, 6)
+
+        grid.addWidget(QLabel('FEB1 Bias'), 4, 1)
+        grid.addWidget(self.editParVal['feb1bias']['from'], 4, 2)
+        grid.addWidget(self.editParVal['feb1bias']['to'], 4, 4)
+        grid.addWidget(self.editParVal['feb1bias']['step'], 4, 6)
+
+        grid.addWidget(QLabel('FEB2 DAC'), 5, 1)
+        grid.addWidget(self.editParVal['feb2dac']['from'], 5, 2)
+        grid.addWidget(self.editParVal['feb2dac']['to'], 5, 4)
+        grid.addWidget(self.editParVal['feb2dac']['step'], 5, 6)
+
+        grid.addWidget(QLabel('FEB2 Gain'), 6, 1)
+        grid.addWidget(self.editParVal['feb2gain']['from'], 6, 2)
+        grid.addWidget(self.editParVal['feb2gain']['to'], 6, 4)
+        grid.addWidget(self.editParVal['feb2gain']['step'], 6, 6)
+
+        grid.addWidget(QLabel('FEB2 Bias'), 7, 1)
+        grid.addWidget(self.editParVal['feb2bias']['from'], 7, 2)
+        grid.addWidget(self.editParVal['feb2bias']['to'], 7, 4)
+        grid.addWidget(self.editParVal['feb2bias']['step'], 7, 6)
+
+        grid.addWidget(QLabel('Temperature'), 8, 1)
+        grid.addWidget(self.editParVal['temp']['from'], 8, 2)
+        grid.addWidget(QLabel(u'\u00B0C'), 8, 3)
+        grid.addWidget(self.editParVal['temp']['to'], 8, 4)
+        grid.addWidget(QLabel(u'\u00B0C'), 8, 5)
+        grid.addWidget(self.editParVal['temp']['step'], 8, 6)
+        grid.addWidget(QLabel(u'\u00B0C'), 8, 7)
+
+        grid.addWidget(self.scanBut, 9, 6)
+
+        # put on checkboxes
+        self.includeParCB = dict()
+        for i in range(len(self.parKeys)):
+            k = self.parKeys[i]
+            self.includeParCB[k] = QCheckBox()
+            self.includeParCB[k].setChecked(True)
+            grid.addWidget(self.includeParCB[k], i+1, 0, Qt.AlignCenter)
+
+        return grid
 
     def createPulserControl(self):
         groupBox = QGroupBox('Tektronix AFG3252 Function Generator')
@@ -220,7 +363,7 @@ class Window(QWidget):
         grid.addWidget(QLabel('Voltage Read: '), 2, 0, Qt.AlignRight)
         grid.addWidget(self.puVRbEdit, 2, 1)
         grid.addWidget(QLabel('V'), 2, 2)
-        grid.addWidget(self.puVoltageSwitch, 3, 2)
+        grid.addWidget(self.puVoltageSwitch, 3, 1)
 
         groupBox.setLayout(grid)
 
@@ -294,6 +437,16 @@ class Window(QWidget):
         Vrb = float(self.devPowerUnit.query_voltage(self.puChCB.currentText()))
         self.puVRbEdit.setText(('{:10.4f}'.format(Vrb)).lstrip())
     
+    def sendJsonMsg(self):
+        packedMsg = dict()
+        for par in self.parKeys:
+            if self.includeParCB[par].isChecked():
+                packedMsg[par] = dict()
+                for val_st in ['from', 'to', 'step']:
+                    packedMsg[par][val_st] = self.editParVal[par][val_st].text()
+        print(json.dumps(packedMsg))
+        # self.socket.send_string(json.dumps(packedMsg))
+
     def tsReadTemperature(self):
         sen_id = self.tsTemperatureCB.currentText()
 
@@ -322,6 +475,27 @@ class Window(QWidget):
         # update the temperature plot
         self.plotCurve.setData(list(self.tsX[sen_id]), list(self.tsY[sen_id]), pen=pg.mkPen(color=(0, 0, 255), width=3))
 
+    def wcApplySetpoint(self):
+        target_temp = float(self.wcSetpointEdit.text())
+        self.devWaterCirculator.set_setpoint(target_temp)
+    
+    def wcSwitch(self):
+        if self.wcSwitchBtn.isChecked(): 
+            
+            # setting background color to light-green
+            self.wcSwitchBtn.setStyleSheet("background-color : lightgreen")
+            self.wcSwitchBtn.setText('Switch Off')
+            self.wcSetpointEdit.setEnabled(False)
+            self.devWaterCirculator.set_on_array()
+  
+        # if it is unchecked
+        else:
+  
+            # set background color back to light-grey
+            self.wcSwitchBtn.setStyleSheet("background-color : lightgrey")
+            self.wcSwitchBtn.setText('Switch On')
+            self.wcSetpointEdit.setEnabled(True)
+            self.devWaterCirculator.set_off_array()
         
 
 
