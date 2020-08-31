@@ -1,4 +1,5 @@
 #include <iostream>
+#include "rapidjson/document.h"
 #include <unistd.h>
 #include <zmq.hpp>
 
@@ -13,6 +14,8 @@
 // #include <TThread.h>
 #include <TVirtualX.h>
 #include <RQ_OBJECT.h>
+
+using namespace rapidjson;
 
 class MyDialog
 {
@@ -138,6 +141,7 @@ public:
     void SendMessage();
     // static void* receiveFunction(void *arg);
     void PollMessage();
+    void ProcessMessage(std::string);
 };
 
 MyMainFrame::MyMainFrame(const TGWindow *p, UInt_t w, UInt_t h)
@@ -259,7 +263,17 @@ void MyMainFrame::PollMessage()
         // fMsgDisplay->InsLine(fMsgDisplay->RowCount(), rpl.c_str());
         fMsgDisplay->AddLine(rpl.c_str());
         fMsgDisplay->Update();
+        ProcessMessage(rpl);
     }
+}
+
+void MyMainFrame::ProcessMessage(std::string msg)
+{
+    Document document;
+    document.Parse(msg.c_str());
+
+    for (Value::ConstMemberIterator itr = document["vol"].MemberBegin(); itr != document["vol"].MemberEnd(); ++itr)
+        std::cout << itr->name.GetString() << std::endl;
 }
 
 // void* MyMainFrame::receiveFunction(void* arg)
