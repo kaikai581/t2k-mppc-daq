@@ -10,7 +10,7 @@ def main():
     # command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_filename', type=str,
-           default='../data/mppc_20200817_2febs.root')
+           default='../data/root/mppc_20200817_2febs.root')
     parser.add_argument('-f', '--force_generate', action='store_true')
     args = parser.parse_args()
     global infpn
@@ -19,7 +19,7 @@ def main():
     infn = os.path.basename(infpn)
 
     # assemble the output file pathname
-    outpn = os.path.join(os.path.dirname(__file__), 'processed_data')
+    outpn = os.path.join(os.path.dirname(__file__), '../data/pandas')
     if not os.path.exists(outpn):
         os.makedirs(outpn)
     outfn = infn.rstrip('.root') + '.h5'
@@ -31,7 +31,7 @@ def main():
         sys.exit(0)
 
     # read data with uproot
-    infpn = os.path.join(os.path.dirname(__file__), '../data', infn)
+    infpn = os.path.join(os.path.dirname(__file__), '../data/root', infn)
     try:
         tr = uproot.open(infpn)['mppc']
     except:
