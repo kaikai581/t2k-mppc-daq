@@ -20,6 +20,7 @@ import datetime, time
 import json
 import numpy as np
 import signal
+import zmq
 
 # device API imports
 from AFG3252 import AFG3252
@@ -179,6 +180,30 @@ class Window(QWidget):
         self.puReadbackVoltage()
         self.timer.timeout.connect(self.tsReadTemperature)
         self.tsReadTemperature()
+
+        # zmq and polling timer implementation
+        context = zmq.Context()
+        self.socket = context.socket(zmq.PAIR)
+        self.socket.connect("tcp://localhost:5556")
+        self.poller = zmq.Poller()
+        self.poller.register(self.socket, zmq.POLLIN)
+        self.timerPoll = QTimer()
+        self.timerPoll.start(100)
+        self.timerPoll.timeout.connect(self.pollMsg)
+
+    def closeEvent(self, a0):
+        '''
+        Application destructor. Turn off various hardware components on window
+        exit.
+        '''
+        ## turn off the power system
+        # get the active channel
+        active_ch = int(self.puChCB.currentText())
+        self.devPowerUnit.power_off(active_ch)
+        ## turn off the function generator
+        self.devFunGen.disableOutput(1)
+        
+        return super().closeEvent(a0)
 
     def createCirculatorControl(self):
         # connect to the water circulator
@@ -404,6 +429,13 @@ class Window(QWidget):
         amp = float(self.devFunGen.querySetAmplitude(sel_ch))
         self.fgAmplEdit.setText(('{:10.4f}'.format(amp)).strip())
 
+    def pollMsg(self):
+        socks = dict(self.poller.poll(0))
+        if self.socket in socks and socks[self.socket] == zmq.POLLIN:
+            recv_msg = self.socket.recv()
+            message = self.msgBox.toPlainText() + '\n{}'.format(recv_msg.decode())
+            self.msgBox.setText(message)
+
     def puPowerSwitch(self):
         # get the active channel
         active_ch = int(self.puChCB.currentText())
@@ -445,7 +477,7 @@ class Window(QWidget):
                 for val_st in ['from', 'to', 'step']:
                     packedMsg[par][val_st] = self.editParVal[par][val_st].text()
         print(json.dumps(packedMsg))
-        # self.socket.send_string(json.dumps(packedMsg))
+        self.socket.send_string(json.dumps(packedMsg))
 
     def tsReadTemperature(self):
         sen_id = self.tsTemperatureCB.currentText()

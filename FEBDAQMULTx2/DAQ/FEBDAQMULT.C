@@ -115,6 +115,7 @@
 
 #include "Riostream.h"
 #include "TBenchmark.h"
+#include "TDatime.h"
 #include "TGraph.h"
 #include "TMath.h"
 #include "TF1.h"
@@ -123,9 +124,14 @@
 #include "TTree.h"
 #include "time.h"
 #include <chrono>
+#include "rapidjson/document.h"
 #include <sys/timeb.h>
 #include <unistd.h>
+#include <zmq.hpp>
 #include "FEBDTP.hxx"
+
+// Namespace for JSON parsing
+using namespace rapidjson;
 
 #define maxpe 10 //max number of photoelectrons to use in the fit
 #define nboard 2 // number of boards in this system
@@ -200,6 +206,15 @@ time_t tm0,tm1;
 
 uint32_t CHAN_MASK=0xFFFFFFFF; // by default all channels are recorded
 
+//***** ZMQ variables *****
+TTimer* timerMsgPoll;
+zmq::context_t msgContext(1);
+zmq::socket_t msgSocket(msgContext, zmq::socket_type::pair);
+std::vector<zmq::pollitem_t> fP;
+// variables for storing parameters to scan
+std::vector<int> scanFeb1gains;
+std::vector<int> scanFeb2gains;
+
 void FEBGUI();
 void SetThresholdDAC1(UShort_t dac1);
 UShort_t GetThresholdDAC1();
@@ -217,6 +232,7 @@ UChar_t ConfigGetBias(int chan);
 void ConfigSetGain(int chan, UChar_t val);
 void ConfigSetBias(int chan, UChar_t val);
 void ConfigSetFIL(uint32_t mask1, uint32_t mask2, uint8_t majority); 
+void ProcessMessage(std::string);
 
 UInt_t GrayToBin(UInt_t n)
 {
@@ -453,6 +469,24 @@ void ConfigSetBias(int chan, UChar_t val)
 
 
 
+void PollMessage()
+{
+    // std::cout << "hi" << std::endl;
+    zmq::message_t message;
+    zmq::poll(fP.data(), 1, 0); // changed from zmq::poll(fP.data(), 2, 1); So far no segfault...
+    
+    if (fP[0].revents & ZMQ_POLLIN) {
+        zmq::recv_result_t rec_res = msgSocket.recv(message, zmq::recv_flags::dontwait);
+        //  Process task
+        std::string rpl = std::string(static_cast<char*>(message.data()), message.size());
+
+        ProcessMessage(rpl);
+    }
+}
+
+
+
+
 void PrintConfig(UChar_t *buffer, UShort_t bitlen)
 {
     UChar_t byte;
@@ -675,6 +709,22 @@ int Init(const char *iface="eth1")
     BenchMark->Start("Poll");
     // initialize the threshold container variable
     for(int feb = 0; feb < nboard; feb++) thr_vals[feb] = 0;
+
+
+    //***** ZMQ business *****
+    // try to bind the socket
+    try {
+        msgSocket.bind("tcp://*:5556");
+        fP.push_back({ static_cast<void*>(msgSocket), 0, ZMQ_POLLIN, 0 });
+    }
+    catch (...){
+        std::cout << "Socket related errors..." << std::endl;
+    }
+    // initialize a timer to poll the ZMQ message queue
+    timerMsgPoll = new TTimer();
+    timerMsgPoll->Connect("Timeout()", 0, 0, "PollMessage()");
+    timerMsgPoll->Start(1000, kFALSE);
+    //***** ZMQ business *****
 
     return 1;
 }
@@ -1791,9 +1841,9 @@ bool DumpFW(uint32_t startaddr=0, uint16_t blocks=1)
 {
     bool retval=1;
     // memset(fwbuf,1024*1024,00);
-    buf[0]=startaddr & 0x000000ff; 
-    buf[1]=(startaddr & 0x0000ff00)>>8; 
-    buf[2]=(startaddr & 0x00ff0000)>>16; 
+    buf[0]=startaddr & 0x000000ff;
+    buf[1]=(startaddr & 0x0000ff00)>>8;
+    buf[2]=(startaddr & 0x00ff0000)>>16;
     buf[3]=(blocks & 0x00FF);
     buf[4]=(blocks & 0xFF00) >>8;
     t->setPacketHandler(&ReceiveFW);
@@ -1806,6 +1856,62 @@ bool DumpFW(uint32_t startaddr=0, uint16_t blocks=1)
     else  { printf("CRC check NOT OK!! received CRC=%02x, locally calculated on Host=%02x!\n",crc7,t->gpkt.REG); retval=0;}
     if(retval==0) printf("Error in DumpFW!!\n");
     return retval;
+}
+
+void ProcessMessage(std::string msg)
+{
+    Document document;
+    document.Parse(msg.c_str());
+    // clean up the parameter containers
+    scanFeb1gains.clear();
+    scanFeb2gains.clear();
+
+
+    // For useage examples, see
+    // https://rapidjson.org/md_doc_tutorial.html
+    for(Value::ConstMemberIterator itr = document.MemberBegin(); itr != document.MemberEnd(); ++itr)
+    {
+        if(std::string(itr->name.GetString()) == "feb1gain")
+        {
+            float from, to, step;
+            from = std::stoi(itr->value["from"].GetString());
+            to = std::stoi(itr->value["to"].GetString());
+            step = std::stoi(itr->value["step"].GetString());
+            for(float g = from; g <= to; g += step)
+                scanFeb1gains.push_back(g);
+        }
+        if(std::string(itr->name.GetString()) == "feb2gain")
+        {
+            float from, to, step;
+            from = std::stoi(itr->value["from"].GetString());
+            to = std::stoi(itr->value["to"].GetString());
+            step = std::stoi(itr->value["step"].GetString());
+            for(float g = from; g <= to; g += step)
+                scanFeb2gains.push_back(g);
+        }
+    }
+
+    // For a first implementation, set gains on both boards according to the
+    // feb1gains array.
+    for(unsigned int gIdx = 0; gIdx < scanFeb1gains.size(); gIdx++)
+    {
+        int curGain = scanFeb1gains[gIdx];
+        std::cout << "Processing gain " << curGain << std::endl;
+        for(unsigned int j = 0; j < 32; j++)
+        {
+            fChanGain[0][j]->SetNumber(curGain);
+            fChanGain[1][j]->SetNumber(curGain);
+        }
+        // apply the settings
+        SendConfig();
+        // clear the data container
+        Reset();
+        // Start taking data!
+        if(RunOn == 0) StartDAQ(10000);
+        // save to disk
+        TDatime tdt;
+        tr->SaveAs(Form("mppc_%d_gain%d.root", tdt.GetDate(), curGain));
+    }
 }
 
 bool ProgramFW(uint32_t startaddr=0, uint16_t blocks=1) 
