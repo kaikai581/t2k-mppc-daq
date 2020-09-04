@@ -199,6 +199,7 @@ int evsperrequest=0;
 FEBDTP* t;
 Int_t chan=0; //channel to display on separate canvas c1
 Int_t BoardToMon=0; //board to display on separate canvas c1
+Int_t slowerBoard = -1; // use the number of events on the slower board
 TTree* tr;
 int RunOn=0;
 
@@ -534,6 +535,17 @@ void SendConfig()
     // }
 }
 
+void SendConfig2All()
+{
+    Int_t curBoard = BoardToMon;
+    for(int feb = 0; feb < t->nclients; feb++)
+    {
+        BoardToMon = feb;
+        SendConfig();
+    }
+    BoardToMon = curBoard;
+}
+
 void SaveAsDialog()
 {
     // check if a tree exists already
@@ -815,7 +827,7 @@ void FillHistos(int truncat)  // hook called by libFEBDTP when event is received
         auto curtime = std::chrono::high_resolution_clock::now();
         ns_epoch = curtime.time_since_epoch().count();
         tr->Fill();
-        if(t->dstmac[5] == t->macs[BoardToMon][5])
+        if(t->dstmac[5] == t->macs[slowerBoard][5])
         {
             evs++;
             evspack++; 
@@ -935,10 +947,17 @@ void DAQ(int nev=0)
             }
 
         }
-        chan=fNumberEntry886->GetNumber();
+        chan=fNumberEntry886->GetNumber(); // choose a single channel to monitor
         rate[BoardToMon]=GetTriggerRate()/1e3;
         sprintf(str1,"Trigger %2.3f kHz",rate[BoardToMon]);
-        grevrate->SetPoint(grevrate->GetN(),grevrate->GetN(),rate[BoardToMon]); 
+        grevrate->SetPoint(grevrate->GetN(),grevrate->GetN(),rate[BoardToMon]);
+
+        // Determine the slower board
+        if(slowerBoard < 0)
+        {
+            slowerBoard = 0;
+            if(rate[1] < rate[0]) slowerBoard = 1;
+        }
 
         if(rate[BoardToMon]<3.6) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xbbffbb);
         else if (rate[BoardToMon]<5.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffbbbb);
@@ -1903,7 +1922,7 @@ void ProcessMessage(std::string msg)
             fChanGain[1][j]->SetNumber(curGain);
         }
         // apply the settings
-        SendConfig();
+        SendConfig2All();
         // clear the data container
         Reset();
         // Start taking data!

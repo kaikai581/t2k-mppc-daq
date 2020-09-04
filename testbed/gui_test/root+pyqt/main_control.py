@@ -61,9 +61,11 @@ class Window(QWidget):
         self.tabs = QTabWidget()
         self.tab1 = QWidget()
         self.tab2 = QWidget()
+        self.tab3 = QWidget()
         # Add tabs
         self.tabs.addTab(self.tab1, 'Simple Control')
         self.tabs.addTab(self.tab2, 'Parameter Scan')
+        self.tabs.addTab(self.tab3, 'Dark Rate Scan')
         self.tab1.layout = QVBoxLayout(self)
         self.tab1.layout.addWidget(self.createVoltageControl())
         self.tab1.setLayout(self.tab1.layout)
@@ -71,6 +73,7 @@ class Window(QWidget):
         # self.tab2.layout2.addWidget(self.createParameterScan())
         # self.tab2.setLayout(self.tab2.layout2)
         self.tab2.setLayout(self.createParameterScan())
+        self.tab3.setLayout(self.createDarkRateScan())
         self.tabs.setCurrentIndex(1)
 
         grid = QGridLayout()
@@ -87,6 +90,21 @@ class Window(QWidget):
         scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.setWindowIcon(QtGui.QIcon(os.path.join(scriptDir, 'logo.png')))
 
+    def createDarkRateScan(self):
+        # widgets belonging to this tab
+        self.drsFebCB = QComboBox()
+        self.drsFebCB.addItems(['All', '0', '1'])
+        self.drsChCB = QComboBox()
+        self.drsChCB.addItems(['All']+[str(i) for i in range(32)])
+        self.drsStartBtn = QPushButton(text='Start Scan')
+        # lay out widgets
+        grid = QGridLayout()
+        grid.addWidget(QLabel('FEB'), 0, 0, Qt.AlignCenter)
+        grid.addWidget(QLabel('Channel'), 0, 1, Qt.AlignCenter)
+        grid.addWidget(self.drsFebCB, 1, 0, Qt.AlignCenter)
+        grid.addWidget(self.drsChCB, 1, 1, Qt.AlignCenter)
+        grid.addWidget(self.drsStartBtn, 2, 1, Qt.AlignCenter)
+        return grid
 
     def createParameterScan(self):
         # member widgets
