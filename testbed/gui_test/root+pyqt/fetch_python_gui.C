@@ -1,5 +1,7 @@
 #include <iostream>
 #include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 #include <unistd.h>
 #include <zmq.hpp>
 
@@ -300,10 +302,28 @@ void MyMainFrame::ProcessMessage(std::string msg)
 void MyMainFrame::SendMessage()
 {
     std::string msg(edt_msg->GetText());
-    //  Send reply back to client
-    zmq::message_t reply(msg.length());
-    memcpy(reply.data(), msg.c_str(), msg.length());
-    fSocket.send(reply, zmq::send_flags::none);
+    if(msg == "")
+    {
+        Document document;
+        const char json[] = " { \"hello\" : \"world\" } ";
+        document.Parse(json);
+        document["hello"] = "rapidjson";
+        /// ref: https://gist.github.com/fclairamb/0d03cf713985100ccd51
+        StringBuffer buffer;
+        Writer<StringBuffer> writer(buffer);
+        document.Accept(writer);
+        std::string msg_str(buffer.GetString());
+        /// ref: https://stackoverflow.com/questions/46070568/how-to-send-a-zmq-message-using-a-reference
+        zmq::message_t msg_sent(msg_str.size());
+        std::memcpy(msg_sent.data(), msg_str.data(), msg_str.size());
+        fSocket.send(msg_sent, zmq::send_flags::none);
+    }
+    else //  Send reply back to client
+    {
+        zmq::message_t reply(msg.length());
+        memcpy(reply.data(), msg.c_str(), msg.length());
+        fSocket.send(reply, zmq::send_flags::none);
+    }
 }
 
 void fetch_python_gui()

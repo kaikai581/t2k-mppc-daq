@@ -245,7 +245,14 @@ class Window(QWidget):
         socks = dict(self.poller.poll(0))
         if self.socket in socks and socks[self.socket] == zmq.POLLIN:
             recv_msg = self.socket.recv()
-            message = self.msgBox.toPlainText() + '\n{}'.format(recv_msg.decode())
+            recv_str = recv_msg.decode()
+            try:
+                a_json = json.loads(recv_str)
+                k = list(a_json.keys())[0]
+                v = a_json[k]
+                message = self.msgBox.toPlainText() + '\n{}:{}'.format(k, v)
+            except:
+                message = self.msgBox.toPlainText() + '\n{}'.format(recv_str)
             self.msgBox.setText(message)
     
     def sendJsonMsg(self):
