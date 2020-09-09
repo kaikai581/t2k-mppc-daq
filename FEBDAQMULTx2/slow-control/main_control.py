@@ -88,7 +88,8 @@ class Window(QWidget):
         # power unit starts with pu
         self.puVoltageSwitch = QPushButton(text='Switch On')
         self.puVoltageSwitch.setCheckable(True)
-        self.puVoltageSwitch.clicked.connect(self.puPowerSwitch)
+        # self.puVoltageSwitch.clicked.connect(self.puPowerSwitch)
+        self.puVoltageSwitch.toggled.connect(self.puPowerSwitch)
         self.puChCB = QComboBox()
         self.puChCB.addItems(['all', '1', '2', '3', '4'])
         self.puChCB.setCurrentIndex(4)
@@ -174,6 +175,13 @@ class Window(QWidget):
         # ref: https://stackoverflow.com/questions/42602713/how-to-set-a-window-icon-with-pyqt5
         scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.setWindowIcon(QtGui.QIcon(os.path.join(scriptDir, 'logo.png')))
+
+        #***** DAQ STATUS VARIABLE *****
+        # Make sure this variable is defined before any timer instantiation.
+        self.daqReady = True
+        # Parameter scan queue for parameter values to be gone through
+        # whenever the DAQ status is ready
+        self.psQueue = []
 
         # use a timer for voltage readback
         # ref: https://pythonpyqt.com/qtimer/
@@ -358,6 +366,9 @@ class Window(QWidget):
         # scanned. Therefore by default uncheck the checkboxes.
         for parkey in ['feb1dac', 'feb1bias', 'feb1gain', 'feb2dac', 'feb2bias', 'feb2gain']:
             self.includeParCB[parkey].setChecked(False)
+            self.includeParCB[parkey].setEnabled(False)
+        # Temperature scan takes much time, so disabe by default
+        self.includeParCB['temp'].setChecked(False)
 
         return grid
 
@@ -463,9 +474,29 @@ class Window(QWidget):
     def pollMsg(self):
         socks = dict(self.poller.poll(0))
         if self.socket in socks and socks[self.socket] == zmq.POLLIN:
-            recv_msg = self.socket.recv()
-            message = self.msgBox.toPlainText() + '\n{}'.format(recv_msg.decode())
-            self.msgBox.setText(message)
+            recv_str = self.socket.recv().decode()
+            # Check if any message from DAQ indicates the DAQ status
+            try:
+                a_json = json.loads(recv_str)
+                if 'daq status' in a_json.keys():
+                    self.daqReady = True if a_json['daq status'] == 'ready' else False
+            except:
+                message = self.msgBox.toPlainText() + '\n{}'.format(recv_str)
+                self.msgBox.setText(message)
+        
+        # Issue data taking command to the DAQ if necessary
+        if self.daqReady and len(self.psQueue) > 0:
+            par_table = self.psQueue[0]
+            if 'vol' in par_table.keys():
+                if self.puVoltageSwitch.isChecked():
+                    self.puVoltageSwitch.setChecked(False)
+                self.puVsetEdit.setText(str(par_table['vol']))
+                self.puVoltageSwitch.setChecked(True)
+                par_table['number of events'] = self.editNEvt.text()
+                par_table['parameter scan'] = 'on'
+                self.socket.send_string(json.dumps(par_table))
+                self.daqReady = False
+                self.psQueue = self.psQueue[1:]
 
     def puPowerSwitch(self):
         # get the active channel
@@ -524,6 +555,39 @@ class Window(QWidget):
         packedMsg['number of events'] = self.editNEvt.text()
         print('Slow control sending:', json.dumps(packedMsg))
         self.socket.send_string(json.dumps(packedMsg))
+        # Put the temperature and voltage parameters to the scan queue.
+        temp_vals = []
+        if self.includeParCB['temp'].isChecked():
+            temp_from = float(self.editParVal['temp']['from'].text())
+            temp_to = float(self.editParVal['temp']['to'].text())
+            temp_step = float(self.editParVal['temp']['step'].text())
+            if temp_step > 0:
+                # add a small epsilon to include the endpoint
+                temp_vals = list(np.arange(temp_from, temp_to+temp_step/1e5, temp_step))
+        vol_vals = []
+        if self.includeParCB['vol'].isChecked():
+            vol_from = float(self.editParVal['vol']['from'].text())
+            vol_to = float(self.editParVal['vol']['to'].text())
+            vol_step = float(self.editParVal['vol']['step'].text())
+            if vol_step > 0:
+                # add a small epsilon to include the endpoint
+                vol_vals = list(np.arange(vol_from, vol_to+vol_step/1e5, vol_step))
+        # assemble the parameter scan queue
+        ntemp = len(temp_vals) if len(temp_vals) > 0 else 1
+        nvol = len(vol_vals) if len(vol_vals) > 0 else 1
+        itemp = 0
+        self.psQueue = []
+        for i in range(ntemp):
+            ivol = 0
+            for j in range(nvol):
+                self.psQueue.append(dict())
+                if itemp < len(temp_vals):
+                    self.psQueue[-1]['temp'] = temp_vals[itemp]
+                if ivol < len(vol_vals):
+                    self.psQueue[-1]['vol'] = vol_vals[ivol]
+                    ivol += 1
+            itemp += 1
+
 
     def tsReadTemperature(self):
         sen_id = self.tsTemperatureCB.currentText()

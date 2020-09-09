@@ -125,6 +125,8 @@
 #include "time.h"
 #include <chrono>
 #include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 #include <sys/timeb.h>
 #include <unistd.h>
 #include <zmq.hpp>
@@ -346,6 +348,19 @@ bool ConfigGetBit(UChar_t *buffer, UShort_t bitlen, UShort_t bit_index)
     if(byte!=0) return true; else return false; 
 }
 
+void SendMsg2SlowCtrl(const char* json)
+{
+    Document document;
+    document.Parse(json);
+    StringBuffer buffer;
+    Writer<StringBuffer> writer(buffer);
+    document.Accept(writer);
+    std::string msg_str(buffer.GetString());
+    zmq::message_t msg_sent(msg_str.size());
+    std::memcpy(msg_sent.data(), msg_str.data(), msg_str.size());
+    msgSocket.send(msg_sent, zmq::send_flags::none);
+}
+
 void SetDstMacByIndex(int i)
 {
     if(i>=t->nclients || i<0) return;
@@ -480,7 +495,7 @@ void PollMessage()
         zmq::recv_result_t rec_res = msgSocket.recv(message, zmq::recv_flags::dontwait);
         //  Process task
         std::string rpl = std::string(static_cast<char*>(message.data()), message.size());
-
+        std::cout << "DAQ receiving " << rpl << std::endl;
         ProcessMessage(rpl);
     }
 }
@@ -1955,8 +1970,32 @@ void ProcessMessage(std::string msg)
 
 
     //***** Handle voltage scan scenario *****
-    // std::vector<float> 
-    // if(document.HasMember("vol"))
+    float vol = 58;
+    float temp = 20;
+    if(document.HasMember("vol")) vol = document["vol"].GetFloat();
+    if(document.HasMember("temp")) temp = std::stof(document["temp"].GetString());
+    // This means DAQ on!
+    if(document.HasMember("parameter scan"))
+    {
+        // First, signal slow control I am busy.
+        const char json[] = " { \"daq status\" : \"busy\" } ";
+        SendMsg2SlowCtrl(json);
+
+        //***** DAQ sequence *****
+        SendConfig2All();
+        // clear the data container
+        Reset();
+        // Start taking data!
+        slowerBoard = -1;
+        if(RunOn == 0) StartDAQ(psNEvt);
+        // save to disk
+        TDatime tdt;
+        tr->SaveAs(Form("%d_%d_mppc_volt%.1lf_temp%.1lf.root", tdt.GetDate(), tdt.GetTime(), vol, temp));
+
+        // After data taking finishes, signal slow control I am ready.
+        const char json_ready[] = " { \"daq status\" : \"ready\" } ";
+        SendMsg2SlowCtrl(json_ready);
+    }
 
 
     // Grab the number of events for parameter scan.
