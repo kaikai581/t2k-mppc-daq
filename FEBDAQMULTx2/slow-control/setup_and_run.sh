@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Check if a process is running already.
+# If yes, kill it before proceed.
+# Source: https://stackoverflow.com/questions/3510673/find-and-kill-a-process-in-one-line-using-bash-and-regex
+# Below will result in warning if no process exists.
+# kill -9 $(ps aux | grep '[m]ain_control.py' | awk '{print $2}')
+ps aux | grep '[m]ain_control.py' | awk '{print $2}' | xargs -I{} kill -9 {}
+
 # enable conda
 . /home/hepr2018/sklin/anaconda3/etc/profile.d/conda.sh
 

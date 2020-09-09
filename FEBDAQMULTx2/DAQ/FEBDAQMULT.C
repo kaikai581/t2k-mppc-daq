@@ -948,13 +948,22 @@ void DAQ(int nev=0)
 
         }
         chan=fNumberEntry886->GetNumber(); // choose a single channel to monitor
-        rate[BoardToMon]=GetTriggerRate()/1e3;
+        // calculate rates for both channels
+        int btm_now = BoardToMon;
+        for(int bItr = 0; bItr < nboard; bItr++)
+        {
+            BoardToMon = bItr;
+            rate[BoardToMon] = GetTriggerRate()/1e3;
+        }
+        BoardToMon = btm_now;
+        // calculate rates for both channels
         sprintf(str1,"Trigger %2.3f kHz",rate[BoardToMon]);
         grevrate->SetPoint(grevrate->GetN(),grevrate->GetN(),rate[BoardToMon]);
 
         // Determine the slower board
         if(slowerBoard < 0)
         {
+            // normal conditions
             slowerBoard = 0;
             if(rate[1] < rate[0]) slowerBoard = 1;
         }
@@ -1884,7 +1893,10 @@ void ProcessMessage(std::string msg)
     // clean up the parameter containers
     scanFeb1gains.clear();
     scanFeb2gains.clear();
-
+    std::vector<int> drsFebs;
+    std::vector<int> drsChs;
+    int psNEvt = 0;
+    int drsNEvt = 0;
 
     // For useage examples, see
     // https://rapidjson.org/md_doc_tutorial.html
@@ -1910,26 +1922,91 @@ void ProcessMessage(std::string msg)
         }
     }
 
+    //***** Voltage Scan *****
+    // Grab the number of events for parameter scan.
+    if(document.HasMember("number of events"))
+        psNEvt = std::stoi(document["number of events"].GetString());
+    //***** Start DAQ *****
     // For a first implementation, set gains on both boards according to the
     // feb1gains array.
-    for(unsigned int gIdx = 0; gIdx < scanFeb1gains.size(); gIdx++)
+    // if(!document.HasMember("dark rate scan"))
+    // {
+    //     for(unsigned int gIdx = 0; gIdx < scanFeb1gains.size(); gIdx++)
+    //     {
+    //         int curGain = scanFeb1gains[gIdx];
+    //         std::cout << "Processing gain " << curGain << std::endl;
+    //         for(unsigned int j = 0; j < 32; j++)
+    //         {
+    //             fChanGain[0][j]->SetNumber(curGain);
+    //             fChanGain[1][j]->SetNumber(curGain);
+    //         }
+    //         // apply the settings
+    //         SendConfig2All();
+    //         // clear the data container
+    //         Reset();
+    //         // Start taking data!
+    //         slowerBoard = -1;
+    //         if(RunOn == 0) StartDAQ(psNEvt);
+    //         // save to disk
+    //         TDatime tdt;
+    //         tr->SaveAs(Form("%d_mppc_gain%d.root", tdt.GetDate(), curGain));
+    //     }
+    // }
+
+
+    //***** Handle voltage scan scenario *****
+    // std::vector<float> 
+    // if(document.HasMember("vol"))
+
+
+    // Grab the number of events for parameter scan.
+    if(document.HasMember("drs_nevt"))
+        drsNEvt = std::stoi(document["drs_nevt"].GetString());
+    // Deal with dark rate scan
+    if(document.HasMember("dark rate scan"))
     {
-        int curGain = scanFeb1gains[gIdx];
-        std::cout << "Processing gain " << curGain << std::endl;
-        for(unsigned int j = 0; j < 32; j++)
+        // store FEB to scan
+        if(std::string(document["dark rate scan"]["feb"].GetString()) == "All")
+            for(int i = 0; i < nboard; i++) drsFebs.push_back(i);
+        else drsFebs.push_back(std::stoi(document["dark rate scan"]["feb"].GetString()));
+        // store channel to scan
+        if(std::string(document["dark rate scan"]["ch"].GetString()) == "All")
+            for(int i = 0; i < 32; i++) drsChs.push_back(i);
+        else drsChs.push_back(std::stoi(document["dark rate scan"]["ch"].GetString()));
+        
+        //***** Start DAQ *****
+        for(unsigned int bIdx = 0; bIdx < drsFebs.size(); bIdx++)
         {
-            fChanGain[0][j]->SetNumber(curGain);
-            fChanGain[1][j]->SetNumber(curGain);
+            int curFeb = drsFebs[bIdx];
+            for(unsigned int cIdx = 0; cIdx < drsChs.size(); cIdx++)
+            {
+                int curCh = drsChs[cIdx];
+                // Check only one channel at a time according to
+                // the current iteration in the scan.
+                for(int chItr = 0; chItr < 32; chItr++)
+                {
+                    for(int fItr = 0; fItr < nboard; fItr++)
+                    {
+                        if((chItr == curCh) && (fItr == curFeb))
+                            fChanEnaTrig[fItr][chItr]->SetState(kButtonDown);
+                        else // clear all others
+                            fChanEnaTrig[fItr][chItr]->SetState(kButtonUp);
+                    }
+                }
+                // Enable OR32
+                fChanEnaTrig[curFeb][32]->SetState(kButtonDown);
+                // apply the settings
+                SendConfig2All();
+                // clear the data container
+                Reset();
+                // Start taking data!
+                slowerBoard = curFeb;
+                if(RunOn == 0) StartDAQ(drsNEvt);
+                // save to disk
+                TDatime tdt;
+                tr->SaveAs(Form("%d_dark_rate_feb%d_ch%d.root", tdt.GetDate(), curFeb, curCh));
+            }
         }
-        // apply the settings
-        SendConfig2All();
-        // clear the data container
-        Reset();
-        // Start taking data!
-        if(RunOn == 0) StartDAQ(10000);
-        // save to disk
-        TDatime tdt;
-        tr->SaveAs(Form("mppc_%d_gain%d.root", tdt.GetDate(), curGain));
     }
 }
 

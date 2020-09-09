@@ -148,9 +148,11 @@ class Window(QWidget):
         self.tabs = QTabWidget()
         self.tab1 = QWidget()
         self.tab2 = QWidget()
+        self.tab3 = QWidget()
         # Add tabs
         self.tabs.addTab(self.tab1, 'Simple Control')
         self.tabs.addTab(self.tab2, 'Parameter Scan')
+        self.tabs.addTab(self.tab3, 'Dark Rate Scan')
         self.tab1.layout = QGridLayout()
         self.tab1.layout.addWidget(self.createVoltageControl(), 0, 0, 1, 1)
         self.tab1.layout.addWidget(self.createPulserControl(), 0, 1, 1, 1)
@@ -159,6 +161,7 @@ class Window(QWidget):
         self.tab1.layout.addWidget(self.createTemperatureSensor(), 0, 3, 2, 1)
         self.tab1.setLayout(self.tab1.layout)
         self.tab2.setLayout(self.createParameterScan())
+        self.tab3.setLayout(self.createDarkRateScan())
         grid = QGridLayout()
         grid.addWidget(self.tabs, 0, 0)
         self.setLayout(grid)
@@ -231,6 +234,26 @@ class Window(QWidget):
 
         return groupBox
 
+    def createDarkRateScan(self):
+        # widgets belonging to this tab
+        self.drsFebCB = QComboBox()
+        self.drsFebCB.addItems(['All', '0', '1'])
+        self.drsChCB = QComboBox()
+        self.drsChCB.addItems(['All']+[str(i) for i in range(32)])
+        self.drsEditNEvt = QLineEdit('10000')
+        self.drsStartBtn = QPushButton(text='Start Scan')
+        self.drsStartBtn.clicked.connect(self.sendDrJsonMsg)
+        # lay out widgets
+        grid = QGridLayout()
+        grid.addWidget(QLabel('FEB'), 0, 0, Qt.AlignCenter)
+        grid.addWidget(self.drsFebCB, 0, 1, Qt.AlignCenter)
+        grid.addWidget(QLabel('Channel'), 0, 2, Qt.AlignCenter)
+        grid.addWidget(self.drsChCB, 0, 3, Qt.AlignCenter)
+        grid.addWidget(QLabel('number of events'), 1, 0, Qt.AlignCenter)
+        grid.addWidget(self.drsEditNEvt, 1, 1, Qt.AlignCenter)
+        grid.addWidget(self.drsStartBtn, 2, 4, Qt.AlignCenter)
+        return grid
+
     def createParameterScan(self):
         # member widgets
         self.parKeys = ['vol', 'feb1dac', 'feb1gain', 'feb1bias', 'feb2dac', 'feb2gain', 'feb2bias', 'temp']
@@ -242,26 +265,27 @@ class Window(QWidget):
         self.editParVal['vol']['to'] = QLineEdit('60')
         self.editParVal['vol']['step'] = QLineEdit('1')
         self.editParVal['feb1dac']['from'] = QLineEdit('230')
-        self.editParVal['feb1dac']['to'] = QLineEdit('250')
-        self.editParVal['feb1dac']['step'] = QLineEdit('5')
-        self.editParVal['feb1gain']['from'] = QLineEdit('50')
+        self.editParVal['feb1dac']['to'] = QLineEdit('230')
+        self.editParVal['feb1dac']['step'] = QLineEdit('0')
+        self.editParVal['feb1gain']['from'] = QLineEdit('60')
         self.editParVal['feb1gain']['to'] = QLineEdit('60')
-        self.editParVal['feb1gain']['step'] = QLineEdit('5')
-        self.editParVal['feb1bias']['from'] = QLineEdit('190')
+        self.editParVal['feb1gain']['step'] = QLineEdit('0')
+        self.editParVal['feb1bias']['from'] = QLineEdit('200')
         self.editParVal['feb1bias']['to'] = QLineEdit('200')
-        self.editParVal['feb1bias']['step'] = QLineEdit('5')
+        self.editParVal['feb1bias']['step'] = QLineEdit('0')
         self.editParVal['feb2dac']['from'] = QLineEdit('230')
-        self.editParVal['feb2dac']['to'] = QLineEdit('250')
-        self.editParVal['feb2dac']['step'] = QLineEdit('5')
-        self.editParVal['feb2gain']['from'] = QLineEdit('50')
+        self.editParVal['feb2dac']['to'] = QLineEdit('230')
+        self.editParVal['feb2dac']['step'] = QLineEdit('0')
+        self.editParVal['feb2gain']['from'] = QLineEdit('60')
         self.editParVal['feb2gain']['to'] = QLineEdit('60')
-        self.editParVal['feb2gain']['step'] = QLineEdit('5')
-        self.editParVal['feb2bias']['from'] = QLineEdit('190')
+        self.editParVal['feb2gain']['step'] = QLineEdit('0')
+        self.editParVal['feb2bias']['from'] = QLineEdit('200')
         self.editParVal['feb2bias']['to'] = QLineEdit('200')
-        self.editParVal['feb2bias']['step'] = QLineEdit('5')
+        self.editParVal['feb2bias']['step'] = QLineEdit('0')
         self.editParVal['temp']['from'] = QLineEdit('18')
         self.editParVal['temp']['to'] = QLineEdit('22')
         self.editParVal['temp']['step'] = QLineEdit('1')
+        self.editNEvt = QLineEdit('10000')
         self.scanBut = QPushButton(text='Start Scan')
         self.scanBut.clicked.connect(self.sendJsonMsg)
 
@@ -318,6 +342,8 @@ class Window(QWidget):
         grid.addWidget(self.editParVal['temp']['step'], 8, 6)
         grid.addWidget(QLabel(u'\u00B0C'), 8, 7)
 
+        grid.addWidget(QLabel('number of events'), 9, 1, Qt.AlignRight)
+        grid.addWidget(self.editNEvt, 9, 2)
         grid.addWidget(self.scanBut, 9, 6)
 
         # put on checkboxes
@@ -327,6 +353,11 @@ class Window(QWidget):
             self.includeParCB[k] = QCheckBox()
             self.includeParCB[k].setChecked(True)
             grid.addWidget(self.includeParCB[k], i+1, 0, Qt.AlignCenter)
+        
+        # After discussion with the boss, these parameters might not need to be
+        # scanned. Therefore by default uncheck the checkboxes.
+        for parkey in ['feb1dac', 'feb1bias', 'feb1gain', 'feb2dac', 'feb2bias', 'feb2gain']:
+            self.includeParCB[parkey].setChecked(False)
 
         return grid
 
@@ -469,6 +500,15 @@ class Window(QWidget):
         Vrb = float(self.devPowerUnit.query_voltage(self.puChCB.currentText()))
         self.puVRbEdit.setText(('{:10.4f}'.format(Vrb)).lstrip())
     
+    def sendDrJsonMsg(self):
+        packedMsg = dict()
+        packedMsg['dark rate scan'] = dict()
+        packedMsg['dark rate scan']['feb'] = self.drsFebCB.currentText()
+        packedMsg['dark rate scan']['ch'] = self.drsChCB.currentText()
+        packedMsg['drs_nevt'] = self.drsEditNEvt.text()
+        print('Slow control sending:', json.dumps(packedMsg))
+        self.socket.send_string(json.dumps(packedMsg))
+
     def sendJsonMsg(self):
         packedMsg = dict()
         for par in self.parKeys:
@@ -476,7 +516,13 @@ class Window(QWidget):
                 packedMsg[par] = dict()
                 for val_st in ['from', 'to', 'step']:
                     packedMsg[par][val_st] = self.editParVal[par][val_st].text()
-        print(json.dumps(packedMsg))
+        try:
+            nevt = int(self.editNEvt.text())
+        except:
+            print('Error processing number of events!')
+            return
+        packedMsg['number of events'] = self.editNEvt.text()
+        print('Slow control sending:', json.dumps(packedMsg))
         self.socket.send_string(json.dumps(packedMsg))
 
     def tsReadTemperature(self):
