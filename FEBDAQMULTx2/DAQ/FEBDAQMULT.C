@@ -120,6 +120,7 @@
 #include "TMath.h"
 #include "TF1.h"
 #include "TH2F.h"
+#include "TROOT.h"
 #include "TSystem.h"
 #include "TTree.h"
 #include "time.h"
@@ -976,12 +977,13 @@ void DAQ(int nev=0)
         grevrate->SetPoint(grevrate->GetN(),grevrate->GetN(),rate[BoardToMon]);
 
         // Determine the slower board
-        if(slowerBoard < 0)
-        {
+        // if(slowerBoard < 0)
+        // {
             // normal conditions
             slowerBoard = 0;
             if(rate[1] < rate[0]) slowerBoard = 1;
-        }
+            // std::cout << "rates: " << rate[0] << " " << rate[1] << std::endl;
+        // }
 
         if(rate[BoardToMon]<3.6) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xbbffbb);
         else if (rate[BoardToMon]<5.0) fStatusBar739->GetBarPart(0)->SetBackgroundColor(0xffbbbb);
@@ -1110,7 +1112,7 @@ void DAQ(int nev=0)
 
 void Reset()
 {
-    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[BoardToMon][y*4+x]->Reset();}
+    for(int y=0;y<8;y++) for(int x=0;x<4;x++) { hst[0][y*4+x]->Reset(); hst[1][y*4+x]->Reset();}
     c1->cd(); hst[0][chan]->Draw();
     c1->Update();
     c1_1->cd(); hst[1][chan]->Draw();
@@ -1913,6 +1915,9 @@ void ProcessMessage(std::string msg)
     int psNEvt = 0;
     int drsNEvt = 0;
 
+    // make sure output directory exists
+    gROOT->ProcessLine(".! mkdir -p output_data");
+
     // For useage examples, see
     // https://rapidjson.org/md_doc_tutorial.html
     for(Value::ConstMemberIterator itr = document.MemberBegin(); itr != document.MemberEnd(); ++itr)
@@ -1990,7 +1995,7 @@ void ProcessMessage(std::string msg)
         if(RunOn == 0) StartDAQ(psNEvt);
         // save to disk
         TDatime tdt;
-        tr->SaveAs(Form("%d_%d_mppc_volt%.1lf_temp%.1lf.root", tdt.GetDate(), tdt.GetTime(), vol, temp));
+        tr->SaveAs(Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", tdt.GetDate(), tdt.GetTime(), vol, temp));
 
         // After data taking finishes, signal slow control I am ready.
         const char json_ready[] = " { \"daq status\" : \"ready\" } ";
@@ -2043,7 +2048,7 @@ void ProcessMessage(std::string msg)
                 if(RunOn == 0) StartDAQ(drsNEvt);
                 // save to disk
                 TDatime tdt;
-                tr->SaveAs(Form("%d_dark_rate_feb%d_ch%d.root", tdt.GetDate(), curFeb, curCh));
+                tr->SaveAs(Form("output_data/%d_%d_dark_rate_feb%d_ch%d.root", tdt.GetDate(), tdt.GetTime(), curFeb, curCh));
             }
         }
     }
