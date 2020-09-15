@@ -135,3 +135,6 @@ dmypy.json
 *.d
 *.pcm
 
+# Data files
+*.h5
+*.root
