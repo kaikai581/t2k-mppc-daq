@@ -248,7 +248,10 @@ class Window(QWidget):
         self.drsFebCB.addItems(['All', '0', '1'])
         self.drsChCB = QComboBox()
         self.drsChCB.addItems(['All']+[str(i) for i in range(32)])
-        self.drsEditNEvt = QLineEdit('10000')
+        # editors for setting threshold
+        self.drsDac1 = QLineEdit(text='220')
+        self.drsDac2 = QLineEdit(text='220')
+        self.drsEditNEvt = QLineEdit('250000')
         self.drsStartBtn = QPushButton(text='Start Scan')
         self.drsStartBtn.clicked.connect(self.sendDrJsonMsg)
         # lay out widgets
@@ -257,9 +260,14 @@ class Window(QWidget):
         grid.addWidget(self.drsFebCB, 0, 1, Qt.AlignCenter)
         grid.addWidget(QLabel('Channel'), 0, 2, Qt.AlignCenter)
         grid.addWidget(self.drsChCB, 0, 3, Qt.AlignCenter)
-        grid.addWidget(QLabel('number of events'), 1, 0, Qt.AlignCenter)
-        grid.addWidget(self.drsEditNEvt, 1, 1, Qt.AlignCenter)
-        grid.addWidget(self.drsStartBtn, 2, 4, Qt.AlignCenter)
+        grid.addWidget(QLabel('FEB1 DAC'), 1, 0, Qt.AlignCenter)
+        grid.addWidget(self.drsDac1, 1, 1, Qt.AlignCenter)
+        grid.addWidget(QLabel('FEB2 DAC'), 1, 2, Qt.AlignCenter)
+        grid.addWidget(self.drsDac2, 1, 3, Qt.AlignCenter)
+        grid.addWidget(self.drsFebCB, 0, 1, Qt.AlignCenter)
+        grid.addWidget(QLabel('number of events'), 2, 0, Qt.AlignCenter)
+        grid.addWidget(self.drsEditNEvt, 2, 1, Qt.AlignCenter)
+        grid.addWidget(self.drsStartBtn, 3, 4, Qt.AlignCenter)
         return grid
 
     def createParameterScan(self):
@@ -494,9 +502,9 @@ class Window(QWidget):
                 self.puVoltageSwitch.setChecked(True)
                 par_table['number of events'] = self.editNEvt.text()
                 par_table['parameter scan'] = 'on'
-                self.socket.send_string(json.dumps(par_table))
-                self.daqReady = False
-                self.psQueue = self.psQueue[1:]
+            self.socket.send_string(json.dumps(par_table))
+            self.daqReady = False
+            self.psQueue = self.psQueue[1:]
 
     def puPowerSwitch(self):
         # get the active channel
@@ -536,9 +544,12 @@ class Window(QWidget):
         packedMsg['dark rate scan'] = dict()
         packedMsg['dark rate scan']['feb'] = self.drsFebCB.currentText()
         packedMsg['dark rate scan']['ch'] = self.drsChCB.currentText()
+        packedMsg['dark rate scan']['dac1'] = self.drsDac1.text()
+        packedMsg['dark rate scan']['dac2'] = self.drsDac2.text()
         packedMsg['drs_nevt'] = self.drsEditNEvt.text()
         print('Slow control sending:', json.dumps(packedMsg))
-        self.socket.send_string(json.dumps(packedMsg))
+        self.psQueue = []
+        self.psQueue.append(packedMsg)
 
     def sendJsonMsg(self):
         packedMsg = dict()

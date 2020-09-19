@@ -981,7 +981,10 @@ void DAQ(int nev=0)
         // {
             // normal conditions
             slowerBoard = 0;
-            if(rate[1] < rate[0]) slowerBoard = 1;
+            // If FEB1 has zero rate, count event with FEB2.
+            // Or, if FEB2 has a lower but non-zero rate, count event with FEB2.
+            if(((rate[1] < rate[0]) && (rate[1] > 1e-8)) || (rate[0] < 1e-8))
+                slowerBoard = 1;
             // std::cout << "rates: " << rate[0] << " " << rate[1] << std::endl;
         // }
 
@@ -1249,6 +1252,7 @@ void GUI_UpdateThreshold()
 {
     UShort_t dac1;
     dac1=fNumberEntry755->GetNumber();
+    std::cout << "Setting threshold of FEB " << BoardToMon << " to " << dac1 << std::endl;
     //	for(int feb=0; feb<t->nclients; feb++)
     //	{
     SetDstMacByIndex(BoardToMon);
@@ -2018,6 +2022,26 @@ void ProcessMessage(std::string msg)
             for(int i = 0; i < 32; i++) drsChs.push_back(i);
         else drsChs.push_back(std::stoi(document["dark rate scan"]["ch"].GetString()));
         
+        // set threshold of board 1 and 2
+        float thr1 = std::atof(document["dark rate scan"]["dac1"].GetString());
+        float thr2 = std::atof(document["dark rate scan"]["dac2"].GetString());
+        // remember the current tab
+        int curTabId = fTab683->GetCurrent();
+        // change values on the GUI
+        int activeFeb = BoardToMon;
+        BoardToMon = 0;
+        fNumberEntry755->SetNumber(thr1);
+        fTab683->SetTab(2);
+        GUI_UpdateThreshold();
+        SelectBoard();
+        BoardToMon = 1;
+        fNumberEntry755->SetNumber(thr2);
+        fTab683->SetTab(8);
+        GUI_UpdateThreshold();
+        BoardToMon = activeFeb;
+        fTab683->SetTab(curTabId);
+        SelectBoard();
+
         //***** Start DAQ *****
         for(unsigned int bIdx = 0; bIdx < drsFebs.size(); bIdx++)
         {
@@ -2037,6 +2061,11 @@ void ProcessMessage(std::string msg)
                             fChanEnaTrig[fItr][chItr]->SetState(kButtonUp);
                     }
                 }
+
+                // First, signal slow control I am busy.
+                const char json[] = " { \"daq status\" : \"busy\" } ";
+                SendMsg2SlowCtrl(json);
+
                 // Enable OR32
                 fChanEnaTrig[curFeb][32]->SetState(kButtonDown);
                 // apply the settings
@@ -2048,7 +2077,11 @@ void ProcessMessage(std::string msg)
                 if(RunOn == 0) StartDAQ(drsNEvt);
                 // save to disk
                 TDatime tdt;
-                tr->SaveAs(Form("output_data/%d_%d_dark_rate_feb%d_ch%d.root", tdt.GetDate(), tdt.GetTime(), curFeb, curCh));
+                tr->SaveAs(Form("output_data/%d_%d_dark_rate_feb%d_ch%d_thr1_%.1lf_thr2_%.1lf.root", tdt.GetDate(), tdt.GetTime(), curFeb, curCh, thr1, thr2));
+
+                // After data taking finishes, signal slow control I am ready.
+                const char json_ready[] = " { \"daq status\" : \"ready\" } ";
+                SendMsg2SlowCtrl(json_ready);
             }
         }
     }
@@ -2058,7 +2091,7 @@ bool ProgramFW(uint32_t startaddr=0, uint16_t blocks=1)
 {
     bool retval=1;
     buf[0]=startaddr & 0x000000ff; 
-    buf[1]=(startaddr & 0x0000ff00)>>8; 
+    buf[1]=(startaddr & 0x0000ff00)>>8;
     buf[2]=(startaddr & 0x00ff0000)>>16; 
     buf[3]=(blocks & 0x00FF);
     buf[4]=00; //(blocks & 0xFF00) >>8;
