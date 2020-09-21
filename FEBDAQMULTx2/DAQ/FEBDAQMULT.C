@@ -1252,7 +1252,7 @@ void GUI_UpdateThreshold()
 {
     UShort_t dac1;
     dac1=fNumberEntry755->GetNumber();
-    std::cout << "Setting threshold of FEB " << BoardToMon << " to " << dac1 << std::endl;
+    
     //	for(int feb=0; feb<t->nclients; feb++)
     //	{
     SetDstMacByIndex(BoardToMon);
@@ -1263,6 +1263,14 @@ void GUI_UpdateThreshold()
 
     // assign threshold value to buffer variable as well
     thr_vals[BoardToMon] = dac1;
+
+    if(GUI_VERBOSE)
+    {
+        std::cout << "Setting threshold of FEB " << BoardToMon << " to " << dac1 << std::endl;
+        std::cout << "Selected tab ID: " << fTab683->GetCurrent() << std::endl;
+        std::cout << "Active board ID: " << BoardToMon << std::endl;
+        std::cout << "Active board MAC: " << int(t->dstmac[5]) << std::endl;
+    }
 }
 
 void GUI_UpdateVCXO()
@@ -2025,22 +2033,26 @@ void ProcessMessage(std::string msg)
         // set threshold of board 1 and 2
         float thr1 = std::atof(document["dark rate scan"]["dac1"].GetString());
         float thr2 = std::atof(document["dark rate scan"]["dac2"].GetString());
+        thr_vals[0] = thr1;
+        thr_vals[1] = thr2;
         // remember the current tab
         int curTabId = fTab683->GetCurrent();
         // change values on the GUI
         int activeFeb = BoardToMon;
         BoardToMon = 0;
         fNumberEntry755->SetNumber(thr1);
-        fTab683->SetTab(2);
-        GUI_UpdateThreshold();
+        fTab683->SetTab(0);
         SelectBoard();
-        BoardToMon = 1;
-        fNumberEntry755->SetNumber(thr2);
-        fTab683->SetTab(8);
         GUI_UpdateThreshold();
+        // BoardToMon = 1;
+        // fNumberEntry755->SetNumber(thr2);
+        // fTab683->SetTab(7);
+        // SelectBoard();
+        // GUI_UpdateThreshold();
+
+        // restore settings
         BoardToMon = activeFeb;
         fTab683->SetTab(curTabId);
-        SelectBoard();
 
         //***** Start DAQ *****
         for(unsigned int bIdx = 0; bIdx < drsFebs.size(); bIdx++)
