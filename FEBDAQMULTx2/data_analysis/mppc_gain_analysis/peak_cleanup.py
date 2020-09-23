@@ -67,6 +67,17 @@ class PeakCleanup:
         ax.set_title('outlier detection')
         ax.set_xlabel('adjacent ADC difference')
     
+    def relative_interval(self):
+        points = np.array(self.peak_diffs)
+        if len(points.shape) == 1:
+            points = points[:,None]
+        median = np.median(points, axis=0)
+
+        if median > 0:
+            return [x/np.asscalar(median) for x in self.peak_diffs]
+        
+        return self.peak_diffs
+
     def remove_outlier(self, idx):
         # try to remove the left and the right data points
         # and compare which one is more reasonable
@@ -85,7 +96,7 @@ class PeakCleanup:
             self.peak_diffs = right_diff
     
     def remove_outlier_twice(self):
-        for i in range(2):
+        for _ in range(2):
             outl_idx = self.mad_based_outlier_idx(np.array(self.peak_diffs), thresh=5)
             if outl_idx:
                 self.remove_outlier(outl_idx[-1])
