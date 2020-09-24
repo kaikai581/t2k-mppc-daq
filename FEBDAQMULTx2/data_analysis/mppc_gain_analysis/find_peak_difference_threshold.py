@@ -6,6 +6,7 @@ from scipy.signal import find_peaks
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pandas as pd
 
 def peak_diff_ratio_one_ch(df, bid, cid):
@@ -50,8 +51,33 @@ if __name__ == '__main__':
     # retrieve data
     df = pd.read_hdf(infpn, key='mppc')
 
-    # process all channels of data
-    # for bid in range(2):
-    #     for cid in range(32):
-    #         peak_diff_ratio_one_ch(df, bid, cid)
-    print(peak_diff_ratio_one_ch(df, 1, 1))
+    # accumulate all channels of data
+    # by looking at the resulting histogram, choose passing interval (0.95, 1.05)
+    xmax_cut = 1.2
+    xmin_cut = 0.8
+    relative_intervals = []
+    revisit_channels = dict()
+    for bid in range(2):
+        for cid in range(32):
+            ch_id = (bid, cid)
+            cur_ri = peak_diff_ratio_one_ch(df, bid, cid)
+            relative_intervals = relative_intervals + cur_ri
+            for ri in cur_ri:
+                if ri > xmax_cut or ri < xmin_cut:
+                    if not ch_id in revisit_channels.keys():
+                        revisit_channels[ch_id] = []
+                    revisit_channels[ch_id].append(ri)
+    plt.hist(relative_intervals, bins=75)
+    plt.xlabel('adjacent peak ADC difference/median adjacent peak ADC differences')
+    plt.axvline(x=xmax_cut, c='g', alpha=.75, linestyle='--')
+    plt.axvline(x=xmin_cut, c='g', alpha=.75, linestyle='--')
+    print(revisit_channels)
+    # print(peak_diff_ratio_one_ch(df, 1, 1))
+
+    # prepare output file pathname
+    out_dir = os.path.join('plots', os.path.basename(infpn).rstrip('.h5'), 'relative_intervals')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    outfpn = os.path.join(out_dir, 'all_channels_combined.png')
+    # save fig to file
+    plt.savefig(outfpn)
