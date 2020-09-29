@@ -8,7 +8,7 @@ class NESLABRTE10:
     The interface is RS232.
     '''
 
-    def __init__(self):
+    def __init__(self, conn_timeout=1):
         try:
             port_name = '/dev/ttyS0'
             self.conn = serial.Serial(
@@ -17,7 +17,7 @@ class NESLABRTE10:
                 parity=serial.PARITY_NONE,
                 bytesize=serial.EIGHTBITS,
                 stopbits=serial.STOPBITS_ONE,
-                timeout=None
+                timeout=conn_timeout
             )
         except Exception as e:
             print(e)
