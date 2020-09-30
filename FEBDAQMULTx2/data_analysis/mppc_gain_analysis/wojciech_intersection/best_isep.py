@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from peak_cleanup import PeakCleanup
+from scipy.signal import find_peaks
+from sympy import Point2D, Line2D
+import argparse
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+class MPPCLine:
+    def __init__(self, infpn, feb_id, ch):
+        '''
+        The constructor is responsible for finding peak positions given
+        filename and the channel ID.
+        '''
+        try:
+            df = pd.read_hdf(infpn, key='mppc')
+        except:
+            print('Error reading file {}'.format(infpn))
+            return
+
+        # make the plot of a channel
+        chvar = 'chg[{}]'.format(ch)
+        # select data of the specified board
+        df_1b = df[df['feb_num'] == feb_id]
+        # make histogram and find peaks
+        bins = np.linspace(0, 4100, 821)
+        _, axs = plt.subplots(2)
+        histy, bin_edges, _ = axs[0].hist(df_1b[chvar], bins=bins, histtype='step')
+        peaks, _ = find_peaks(histy, prominence=300)
+        
+        # release memory
+        plt.close()
+
+        # store processed data
+        pc = PeakCleanup(list(np.array(bin_edges)[peaks]))
+        pc.remove_outlier_by_relative_interval()
+        self.peak_adcs = pc.peak_adcs
+        self.points = [Point2D(i, self.peak_adcs[i]) for i in range(len(self.peak_adcs))]
+
+        # fit a line to the points
+        x_try = np.array([p.x for p in self.points]).astype(float)
+        y_try = np.array([p.y for p in self.points]).astype(float)
+        coeff = np.polyfit(x_try, y_try, 1)
+        self.line = Line2D(Point2D(0, coeff[1]), slope=coeff[0])
+
+        # bias voltage
+        self.voltage = self.voltage_from_filename(infpn)
+    
+    def voltage_from_filename(self, fn):
+        for tmpstr in fn.split('_'):
+            if 'volt' in tmpstr:
+                return float(tmpstr.lstrip('volt'))
+        return 0.
+
+
+if __name__ == '__main__':
+    # command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input_filelist', type=str,
+                        default='infiles.txt')
+    parser.add_argument('-b', '--board_id', type=int, default=1)
+    parser.add_argument('-c', '--channel', type=int, default=8)
+    args = parser.parse_args()
+    inflist = args.input_filelist
+    board_id = args.board_id
+    channel = args.channel
+    
+    # construct MPPC lines
+    with open(inflist, 'r') as flist:
+        mppc_lines = [MPPCLine(line.rstrip('\n'), board_id, channel) for line in flist]
+    for v in mppc_lines:
+        print(v.points, v.line, v.voltage)
