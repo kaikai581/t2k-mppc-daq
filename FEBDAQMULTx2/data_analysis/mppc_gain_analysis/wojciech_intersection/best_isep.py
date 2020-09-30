@@ -6,6 +6,7 @@ from peak_cleanup import PeakCleanup
 from scipy.signal import find_peaks
 from sympy import Point2D, Line2D
 import argparse
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -15,7 +16,7 @@ class MPPCLine:
     def __init__(self, infpn, feb_id, ch):
         '''
         The constructor is responsible for finding peak positions given
-        filename and the channel ID.
+        a filename and a channel ID.
         '''
         try:
             df = pd.read_hdf(infpn, key='mppc')
@@ -51,6 +52,15 @@ class MPPCLine:
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
     
+    def shift_peak_id(self, x_shift):
+        '''
+        This method shifts all peak position assignments to the left or right
+        by x_shift amount. It also shifts the fitted line by the same amount.
+        '''
+        self.points = [Point2D(i+x_shift, self.peak_adcs[i]) for i in range(len(self.peak_adcs))]
+        self.coeff[1] -= self.coeff[0]*x_shift
+        self.line = Line2D(Point2D(0, self.coeff[1]), slope=self.coeff[0])
+
     def voltage_from_filename(self, fn):
         for tmpstr in fn.split('_'):
             if 'volt' in tmpstr:
@@ -59,16 +69,21 @@ class MPPCLine:
 
 def find_best_intersection(lines):
     # make a list of intersection points
-    int_pts = []
-    for i in range(len(lines)):
-        for j in range(i+1, len(lines)):
-            l1 = lines[i].line
-            l2 = lines[j].line
-            pt = l1.intersection(l2)
-            if pt:
-                int_pts.append(pt[0])
-    tot_dist = loss_function(int_pts)
-    print(tot_dist)
+    shifted_lines = copy.deepcopy(lines)
+    # variable for loop ranges
+    # ref: https://stackoverflow.com/questions/7186518/function-with-varying-number-of-for-loops-python
+    ranges = [(-3, 3) for _ in range(len(lines)-1)]
+    print(ranges)
+    # int_pts = []
+    # for i in range(len(lines)):
+    #     for j in range(i+1, len(lines)):
+    #         l1 = lines[i].line
+    #         l2 = lines[j].line
+    #         pt = l1.intersection(l2)
+    #         if pt:
+    #             int_pts.append(pt[0])
+    # tot_dist = loss_function(int_pts)
+    # print(tot_dist)
     return lines
 
 def loss_function(pts):
