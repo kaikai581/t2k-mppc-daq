@@ -9,6 +9,7 @@ import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import random
 
 class MPPCLine:
     def __init__(self, infpn, feb_id, ch):
@@ -44,8 +45,8 @@ class MPPCLine:
         # fit a line to the points
         x_try = np.array([p.x for p in self.points]).astype(float)
         y_try = np.array([p.y for p in self.points]).astype(float)
-        coeff = np.polyfit(x_try, y_try, 1)
-        self.line = Line2D(Point2D(0, coeff[1]), slope=coeff[0])
+        self.coeff = np.polyfit(x_try, y_try, 1)
+        self.line = Line2D(Point2D(0, self.coeff[1]), slope=self.coeff[0])
 
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
@@ -55,6 +56,45 @@ class MPPCLine:
             if 'volt' in tmpstr:
                 return float(tmpstr.lstrip('volt'))
         return 0.
+
+def find_best_intersection(lines):
+    # make a list of intersection points
+    int_pts = []
+    for i in range(len(lines)):
+        for j in range(i+1, len(lines)):
+            l1 = lines[i].line
+            l2 = lines[j].line
+            pt = l1.intersection(l2)
+            if pt:
+                int_pts.append(pt[0])
+    tot_dist = loss_function(int_pts)
+    print(tot_dist)
+    return lines
+
+def loss_function(pts):
+    tot_dist = 0.
+    for i in range(len(pts)):
+        for j in range(i+1, len(pts)):
+            tot_dist += pts[i].distance(pts[j])
+    return tot_dist
+
+def plot_result(lines):
+    # plot points for each line
+    random.seed(100)
+    for line in lines:
+        # determine line color
+        rgb = (random.random(), random.random(), random.random())
+        # make scatter plot of points
+        px = np.array([p.x for p in line.points]).astype(float)
+        py = np.array([p.y for p in line.points]).astype(float)
+        plt.scatter(px, py, color=rgb)
+        # calculate the range of x and plot
+        xmax = max(px)*1.2
+        xmin = -line.coeff[1]/line.coeff[0]
+        fitx = np.linspace(xmin, xmax, 100)
+        fity = line.coeff[0]*fitx + line.coeff[1]
+        plt.plot(fitx, fity, '--', alpha=.7, color=rgb)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -72,5 +112,13 @@ if __name__ == '__main__':
     # construct MPPC lines
     with open(inflist, 'r') as flist:
         mppc_lines = [MPPCLine(line.rstrip('\n'), board_id, channel) for line in flist]
-    for v in mppc_lines:
-        print(v.points, v.line, v.voltage)
+    
+    # find the best intersection of lines by shifting
+    # all but one lines in x with integral distances
+    best_lines = mppc_lines
+    if len(mppc_lines) >= 3:
+        best_lines = find_best_intersection(mppc_lines)
+    
+    # make the resulting plot
+    plot_result(best_lines)
+    
