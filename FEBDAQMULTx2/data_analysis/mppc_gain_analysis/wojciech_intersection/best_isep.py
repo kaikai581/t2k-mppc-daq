@@ -3,6 +3,7 @@
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from peak_cleanup import PeakCleanup
+from scipy import optimize
 from scipy.signal import find_peaks
 from sympy import Point2D, Line2D
 import argparse
@@ -67,6 +68,29 @@ class MPPCLine:
                 return float(tmpstr.lstrip('volt'))
         return 0.
 
+def average_distance(z, *params):
+    shifted_lines = copy.deepcopy(params)
+    # first, shift the lines
+    assert(len(shifted_lines) == len(z)+1)
+    for i in range(len(z)):
+        shifted_lines[i+1].shift_peak_id(z[i])
+    # then, calculate the intersection points
+    int_pts = []
+    for i in range(len(shifted_lines)):
+        for j in range(i+1, len(shifted_lines)):
+            l1 = shifted_lines[i].line
+            l2 = shifted_lines[j].line
+            pt = l1.intersection(l2)
+            if pt:
+                int_pts.append(pt[0])
+    tot_dist = 0.
+    npts = 0
+    for i in range(len(int_pts)):
+        for j in range(i+1, len(int_pts)):
+            tot_dist += int_pts[i].distance(int_pts[j])
+            npts += 1
+    return (tot_dist/float(npts) if npts > 0 else tot_dist)
+
 def find_best_intersection(lines):
     # make a list of intersection points
     shifted_lines = copy.deepcopy(lines)
@@ -84,6 +108,12 @@ def find_best_intersection(lines):
     #             int_pts.append(pt[0])
     # tot_dist = loss_function(int_pts)
     # print(tot_dist)
+    return lines
+
+def group_shift(lines, shifts):
+    assert(len(lines) == len(shifts)+1)
+    for i in range(len(shifts)):
+        lines[i+1].shift_peak_id(shifts[i])
     return lines
 
 def loss_function(pts):
@@ -126,14 +156,19 @@ if __name__ == '__main__':
     
     # construct MPPC lines
     with open(inflist, 'r') as flist:
-        mppc_lines = [MPPCLine(line.rstrip('\n'), board_id, channel) for line in flist]
+        mppc_lines = tuple([MPPCLine(line.rstrip('\n'), board_id, channel) for line in flist])
     
     # find the best intersection of lines by shifting
     # all but one lines in x with integral distances
     best_lines = mppc_lines
+    rranges = tuple([slice(-3, 3, 1) for _ in range(len(mppc_lines)-1)])
+    print(mppc_lines)
     if len(mppc_lines) >= 3:
-        best_lines = find_best_intersection(mppc_lines)
+        # best_lines = find_best_intersection(mppc_lines)
+        # print(average_distance((0,0,1), mppc_lines))
+        resbrute = optimize.brute(average_distance, rranges, args=mppc_lines, full_output=True, finish=None)
+        print(resbrute)
     
     # make the resulting plot
-    plot_result(best_lines)
+    plot_result(group_shift(best_lines, resbrute[0]))
     

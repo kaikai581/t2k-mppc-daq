@@ -88,12 +88,13 @@ class PeakCleanup:
         left_diff = [left_removed[i+1]-left_removed[i] for i in range(len(left_removed)-1)]
         right_diff = [right_removed[i+1]-right_removed[i] for i in range(len(right_removed)-1)]
         # keep the one with a smaller standard deviation
-        if statistics.stdev(left_diff) < statistics.stdev(right_diff):
-            self.peak_adcs = left_removed
-            self.peak_diffs = left_diff
-        else:
-            self.peak_adcs = right_removed
-            self.peak_diffs = right_diff
+        if len(left_diff) >= 2 and len(right_diff) >= 2:
+            if statistics.stdev(left_diff) < statistics.stdev(right_diff):
+                self.peak_adcs = left_removed
+                self.peak_diffs = left_diff
+            else:
+                self.peak_adcs = right_removed
+                self.peak_diffs = right_diff
     
     def remove_outlier_by_relative_interval(self):
         rel_int = self.relative_interval()
