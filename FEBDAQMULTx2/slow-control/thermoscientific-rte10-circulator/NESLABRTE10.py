@@ -35,6 +35,12 @@ class NESLABRTE10:
         response = self.conn.read(8)
         return response
     
+    def read_internal_temperature(self):
+        cmd = b'\xca\x00\x01\x20\x00\xde'
+        self.conn.write(cmd)
+        response = self.conn.read(9)
+        return (int.from_bytes(response[6:8], 'big'))/10.
+
     def read_low_temperature_limit(self):
         cmd = b'\xca\x00\x01\x40\x00\xbe'
         self.conn.write(cmd)

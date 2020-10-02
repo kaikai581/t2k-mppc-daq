@@ -19,6 +19,7 @@ import collections
 import datetime, time
 import json
 import numpy as np
+import pandas as pd
 import signal
 import zmq
 
@@ -123,7 +124,8 @@ class Window(QWidget):
 
         # a message box
         self.msgBox = QTextEdit()
-        self.msgBox.setText('Welcome to the control application!\n')
+        # self.msgBox.setText('Welcome to the control application!\n')
+        self.msgBox.append('Welcome to the control application!')
         self.msgBox.setReadOnly(True)
 
         # T2K temperature sensor interface
@@ -191,6 +193,7 @@ class Window(QWidget):
         self.puReadbackVoltage()
         self.timer.timeout.connect(self.tsReadTemperature)
         self.tsReadTemperature()
+        self.timer.timeout.connect(self.wcReadInternalTemperature)
 
         # zmq and polling timer implementation
         context = zmq.Context()
@@ -201,6 +204,18 @@ class Window(QWidget):
         self.timerPoll = QTimer()
         self.timerPoll.start(100)
         self.timerPoll.timeout.connect(self.pollMsg)
+
+        # make a timer to log instrument readback data
+        # every 10 seconds.
+        self.logDataTimer = QTimer()
+        self.logDataTimer.start(10000)
+        self.logDataTimer.timeout.connect(self.tsLogReadouts)
+        self.logDataTimer.timeout.connect(self.wcLogInternalTemperature)
+        # also make dataframes for storing data points to be saved to disk.
+        self.dfTempSensor = pd.DataFrame(columns=['Datetime','T0','T1','T2',
+                                         'T3','T4'])
+        self.dfWcIntTemp = pd.DataFrame(columns=['Datetime',
+                                        'Internal Temperature'])
 
     def closeEvent(self, a0):
         '''
@@ -220,8 +235,10 @@ class Window(QWidget):
         # connect to the water circulator
         self.devWaterCirculator = NESLABRTE10()
         # member widgets for the water circulator
+        self.wcLogDataCkB = QCheckBox()
         self.wcSetpointEdit = QLineEdit(text=str(self.devWaterCirculator.read_setpoint()))
         self.wcApplySetpointBtn = QPushButton('Apply')
+        self.wcReadbackEdit = QLineEdit(text=str(self.devWaterCirculator.read_internal_temperature()))
         self.wcSwitchBtn = QPushButton('Switch On')
         self.wcSwitchBtn.setCheckable(True)
         # event connection
@@ -236,7 +253,12 @@ class Window(QWidget):
         grid.addWidget(self.wcSetpointEdit, 0, 1)
         grid.addWidget(QLabel(u'\u00B0C'), 0, 2)
         grid.addWidget(self.wcApplySetpointBtn, 0, 3)
-        grid.addWidget(self.wcSwitchBtn, 1, 3)
+        grid.addWidget(QLabel('Readback: '), 1, 0, Qt.AlignRight)
+        grid.addWidget(self.wcReadbackEdit, 1, 1)
+        grid.addWidget(QLabel(u'\u00B0C'), 1, 2)
+        grid.addWidget(self.wcSwitchBtn, 2, 3)
+        grid.addWidget(self.wcLogDataCkB, 3, 0, Qt.AlignRight)
+        grid.addWidget(QLabel('Log Data to File'), 3, 1, 1, 3)
 
         groupBox.setLayout(grid)
 
@@ -404,13 +426,16 @@ class Window(QWidget):
 
     def createTemperatureSensor(self):
         groupBox = QGroupBox('T2K Temperature Sensor')
+        self.tsLogDataCkB = QCheckBox()
 
         grid = QGridLayout()
         grid.addWidget(QLabel('Sensor: '), 0, 0)
         grid.addWidget(self.tsTemperatureCB, 0, 1)
         grid.addWidget(self.tsTemperatureEdit, 0, 2)
         grid.addWidget(QLabel(u'\u00B0C'), 0, 3)
-        grid.addWidget(self.tsView, 1, 0, 2, 4)
+        grid.addWidget(self.tsLogDataCkB, 1, 0, Qt.AlignRight)
+        grid.addWidget(QLabel('Log Data to File'), 1, 1, 1, 4)
+        grid.addWidget(self.tsView, 2, 0, 2, 4)
         self.tsView.setCentralItem(self.tsLo)
         self.tsView.show()
         self.tsView.resize(200, 100)
@@ -599,6 +624,35 @@ class Window(QWidget):
                     ivol += 1
             itemp += 1
 
+    def tsLogReadouts(self):
+        if not self.tsLogDataCkB.isChecked():
+            return
+        # retrieve data and store them to the dataframe
+        temp_readings = self.devTempSen.query_temperature()
+        self.dfTempSensor['Datetime'] = [datetime.datetime.now()]
+        for i in range(5):
+            sen_id = 'T{}'.format(i)
+            self.dfTempSensor[sen_id] = [float(temp_readings[sen_id])]
+        # self.msgBox.append(self.dfTempSensor.to_string())
+
+        # prepare the output directory
+        save_dir = self.prepare_metadata_directory()
+
+        # file name to store the temperature data
+        save_fn = 'temperature_sensor_readings.csv'
+        save_fpn = os.path.join(save_dir, save_fn)
+        self.dfTempSensor.to_csv(save_fpn, mode='a',
+                                 header=not os.path.exists(save_fpn),
+                                 index=False)
+
+
+    def prepare_metadata_directory(self):
+        # prepare the metadata output directory
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        meta_dir = os.path.join(app_dir, '../DAQ/metadata')
+        if not os.path.exists(meta_dir):
+            os.makedirs(meta_dir)
+        return meta_dir
 
     def tsReadTemperature(self):
         sen_id = self.tsTemperatureCB.currentText()
@@ -632,6 +686,28 @@ class Window(QWidget):
         target_temp = float(self.wcSetpointEdit.text())
         self.devWaterCirculator.set_setpoint(target_temp)
     
+    def wcLogInternalTemperature(self):
+        if not self.wcLogDataCkB.isChecked():
+            return
+        # retrieve data and store them to the dataframe
+        temp_readback = self.devWaterCirculator.read_internal_temperature()
+        self.dfWcIntTemp['Datetime'] = [datetime.datetime.now()]
+        self.dfWcIntTemp['Internal Temperature'] = [temp_readback]
+
+        # prepare the output directory
+        save_dir = self.prepare_metadata_directory()
+
+        # file name to store the temperature data
+        save_fn = 'water_circulator_readback.csv'
+        save_fpn = os.path.join(save_dir, save_fn)
+        self.dfWcIntTemp.to_csv(save_fpn, mode='a',
+                                header=not os.path.exists(save_fpn),
+                                index=False)
+
+    def wcReadInternalTemperature(self):
+        text=str(self.devWaterCirculator.read_internal_temperature())
+        self.wcReadbackEdit.setText(text)
+
     def wcSwitch(self):
         if self.wcSwitchBtn.isChecked(): 
             
