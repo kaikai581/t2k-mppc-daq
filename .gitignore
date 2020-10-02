@@ -136,6 +136,7 @@ dmypy.json
 *.pcm
 
 # Data files
+*.csv
 *.h5
 *.root
 
