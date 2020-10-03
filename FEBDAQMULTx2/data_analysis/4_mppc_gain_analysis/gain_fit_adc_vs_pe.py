@@ -2,6 +2,8 @@
 
 from scipy import stats
 from scipy.signal import find_peaks
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 from sklearn.neighbors import KernelDensity
 from matplotlib import markers
 from operator import itemgetter
@@ -15,7 +17,7 @@ import pandas as pd
 import seaborn as sns
 import statistics
 
-def find_gain(df, feb_id, ch, print_peak_adcs):
+def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
 
     # make the plot of a channel
     chvar = 'chg[{}]'.format(ch)
@@ -26,7 +28,7 @@ def find_gain(df, feb_id, ch, print_peak_adcs):
     plt.figure(figsize=(12,6))
     ax1 = plt.subplot2grid((2, 3), (0, 0), colspan=2)
     histy, bin_edges, _ = ax1.hist(df_1b[chvar], bins=bins, histtype='step')
-    peaks, _ = find_peaks(histy, prominence=300)
+    peaks, _ = find_peaks(histy, prominence=prominence)
     ax1.scatter(np.array(bin_edges)[peaks], np.array(histy)[peaks],
                    marker=markers.CARETDOWN, color='r', s=20)
     ax1.set_xlabel('ADC value')
@@ -36,7 +38,10 @@ def find_gain(df, feb_id, ch, print_peak_adcs):
     if print_peak_adcs: print(peak_adcs)
 
     # make the ADC difference vs PE id plot
-    peak_diff = [peak_adcs[1] - peak_adcs[0]] + [peak_adcs[i+1]-peak_adcs[i] for i in range(len(peak_adcs)-1)]
+    if len(peak_adcs) >= 2:
+        peak_diff = [peak_adcs[1] - peak_adcs[0]] + [peak_adcs[i+1]-peak_adcs[i] for i in range(len(peak_adcs)-1)]
+    else:
+        return 0
     bins_adc_diff = np.linspace(0, len(peak_adcs)-1, len(peak_adcs)).astype(int)
     ax_adc_diff = plt.subplot2grid((2, 3), (0, 2))
     ax_adc_diff.step(bins_adc_diff, peak_diff, ls='-')
@@ -71,7 +76,8 @@ def find_gain(df, feb_id, ch, print_peak_adcs):
     # remove outliers
     peak_adcs_orig = peak_adcs.copy()
     peak_cleaner = PeakCleanup(peak_adcs)
-    peak_cleaner.remove_outlier_twice()
+    # peak_cleaner.remove_outlier_twice()
+    peak_cleaner.remove_outlier_by_relative_interval(left_th=0.7, right_th=1.23)
     peak_adcs = peak_cleaner.peak_adcs
     peak_diff2 = [peak_adcs[i+1]-peak_adcs[i] for i in range(len(peak_adcs)-1)]
     # make kernel density plots after outlier removal
@@ -101,10 +107,16 @@ def find_gain(df, feb_id, ch, print_peak_adcs):
     ax_fit_line.set_xlabel('PE id')
     ax_fit_line.set_ylabel('ADC value')
 
+    # investigate sklearn's regression model
+    lin_model = LinearRegression()
+    lin_model.fit(x_try.reshape(-1,1), y_try)
+    r2_gof = r2_score(y_try, lin_model.predict(x_try.reshape(-1,1)))
+    print('r2_score', r2_gof)
+
     # prepare for output
     infn = os.path.basename(infpn)
     outfdname = os.path.join(os.path.dirname(__file__), infn)
-    outfdname = os.path.join('plots', os.path.splitext(outfdname)[0], 'single_channel')
+    outfdname = os.path.join('plots', os.path.splitext(outfdname)[0]+'_prom{}'.format(prominence), 'single_channel')
     if not os.path.exists(outfdname):
         os.makedirs(outfdname)
 
@@ -118,9 +130,9 @@ def find_gain(df, feb_id, ch, print_peak_adcs):
     plt.close()
 
     # return the slope (gain)
-    return coeff[0]
+    return coeff[0], r2_gof
 
-def process_all_channels(infpn, print_peak_adcs):
+def process_all_channels(infpn, print_peak_adcs, prominence):
     df = pd.read_hdf(infpn, key='mppc')
     # get all different feb numbers
     feb_nums = list(df.feb_num.value_counts().keys())
@@ -151,7 +163,7 @@ def process_all_channels(infpn, print_peak_adcs):
     for feb_num in feb_nums:
         for ch_num in ch_nums:
             ch_name = 'b{}_ch{}'.format(feb_num, ch_num)
-            gain[bias_volt][ch_name] = find_gain(df, feb_num, ch_num, print_peak_adcs)
+            gain[bias_volt][ch_name] = find_gain(df, feb_num, ch_num, print_peak_adcs, prominence)
     with open(outfpn, 'w') as outfile:
         json.dump(gain, outfile)
     # find_gain(df, 0, 5, print_peak_adcs)
@@ -161,10 +173,12 @@ def process_all_channels(infpn, print_peak_adcs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_file', type=str, default='../data/pandas/20200911_180348_mppc_volt58.0_temp20.0.h5')
+    parser.add_argument('-p', '--prominence', type=float, default=250)
     parser.add_argument('--print_peak_adcs', action='store_true')
     args = parser.parse_args()
     infpn = args.input_file
+    prominence = args.prominence
     print_peak_adcs = args.print_peak_adcs
 
     # process all channels of data
-    process_all_channels(infpn, print_peak_adcs)
+    process_all_channels(infpn, print_peak_adcs, prominence)

@@ -108,7 +108,7 @@ def find_best_intersection(lines):
     #             int_pts.append(pt[0])
     # tot_dist = loss_function(int_pts)
     # print(tot_dist)
-    return lines
+    return shifted_lines
 
 def group_shift(lines, shifts):
     assert(len(lines) == len(shifts)+1)

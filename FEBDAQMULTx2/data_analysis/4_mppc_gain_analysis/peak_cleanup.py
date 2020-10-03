@@ -96,9 +96,9 @@ class PeakCleanup:
                 self.peak_adcs = right_removed
                 self.peak_diffs = right_diff
     
-    def remove_outlier_by_relative_interval(self):
+    def remove_outlier_by_relative_interval(self, right_th=1.2, left_th=0.8):
         rel_int = self.relative_interval()
-        outl_idx = [i for i in range(len(rel_int)) if rel_int[i] > 1.2 or rel_int[i] < 0.8]
+        outl_idx = [i for i in range(len(rel_int)) if rel_int[i] > right_th or rel_int[i] < left_th]
         while outl_idx:
             self.remove_outlier(outl_idx[-1])
             outl_idx = outl_idx[:-1]
