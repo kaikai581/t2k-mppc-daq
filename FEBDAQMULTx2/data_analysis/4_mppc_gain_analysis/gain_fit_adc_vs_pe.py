@@ -77,7 +77,9 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
     peak_adcs_orig = peak_adcs.copy()
     peak_cleaner = PeakCleanup(peak_adcs)
     # peak_cleaner.remove_outlier_twice()
-    peak_cleaner.remove_outlier_by_relative_interval(left_th=0.7, right_th=1.23)
+    left_th = 0.7
+    right_th = 1.23
+    peak_cleaner.remove_outlier_by_relative_interval(left_th=left_th, right_th=right_th)
     peak_adcs = peak_cleaner.peak_adcs
     peak_diff2 = [peak_adcs[i+1]-peak_adcs[i] for i in range(len(peak_adcs)-1)]
     # make kernel density plots after outlier removal
@@ -129,8 +131,17 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
     plt.savefig(outfig_pn)
     plt.close()
 
+    # save to database
+    save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, r2_gof)
+
     # return the slope (gain)
     return coeff[0], r2_gof
+
+def processed_data_directory():
+    out_dir = os.path.join(os.path.dirname(__file__), 'processed_data')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    return out_dir
 
 def process_all_channels(infpn, print_peak_adcs, prominence):
     df = pd.read_hdf(infpn, key='mppc')
@@ -146,9 +157,7 @@ def process_all_channels(infpn, print_peak_adcs, prominence):
     file_date = infpn.split('_')[0].split('/')[-1]
 
     # create the output folder to store calculated values
-    out_dir = 'processed_data'
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
+    out_dir = processed_data_directory()
 
     # results container
     outfpn = os.path.join(out_dir, '{}_total_gain_peak_cleanup.txt'.format(file_date))
@@ -170,13 +179,56 @@ def process_all_channels(infpn, print_peak_adcs, prominence):
     # find_gain(df, 0, 6, print_peak_adcs)
     # find_gain(df, 0, 7, print_peak_adcs)
 
+def save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, r2_gof):
+    # determine the output file pathname
+    out_dir = processed_data_directory()
+    outfn = 'gain_database.csv'
+    outfpn = os.path.join(out_dir, outfn)
+    
+    # if file exists, read it into a dataframe;
+    # otherwise create a new dataframe
+    columns = ['filename','board','channel','prominence','left_threshold','right_threshold','gain','r2']
+    if os.path.exists(outfpn):
+        df = pd.read_csv(outfpn)
+    else:
+        df = pd.DataFrame(columns=columns)
+    df = df.set_index(columns[:6])
+    
+    # construct the data dictionary
+    new_data = dict()
+    new_data['filename'] = os.path.basename(infpn)
+    new_data['board'] = feb_id
+    new_data['channel'] = ch
+    new_data['prominence'] = prominence
+    new_data['left_threshold'] = left_th
+    new_data['right_threshold'] = right_th
+    new_data['gain'] = coeff[0]
+    new_data['r2'] = r2_gof
+
+    # make a new dataframe out of the new data record
+    df_new = pd.DataFrame(columns=columns)
+    df_new = df_new.append(new_data, ignore_index=True)
+    df_new = df_new.set_index(columns[:6])
+    print(df_new)
+
+    # append new data if not exist
+    # otherwise overwrite
+    df = df.combine_first(df_new)
+
+    # Write to file
+    df.to_csv(outfpn, mode='w')
+
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_file', type=str, default='../data/pandas/20200911_180348_mppc_volt58.0_temp20.0.h5')
     parser.add_argument('-p', '--prominence', type=float, default=250)
     parser.add_argument('--print_peak_adcs', action='store_true')
     args = parser.parse_args()
+    global infpn
     infpn = args.input_file
+    global prominence
     prominence = args.prominence
     print_peak_adcs = args.print_peak_adcs
 
