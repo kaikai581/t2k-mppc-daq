@@ -81,7 +81,7 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
     right_th = 1.23
     peak_cleaner.remove_outlier_by_relative_interval(left_th=left_th, right_th=right_th)
     peak_adcs = peak_cleaner.peak_adcs
-    peak_diff2 = [peak_adcs[i+1]-peak_adcs[i] for i in range(len(peak_adcs)-1)]
+    # peak_diff2 = [peak_adcs[i+1]-peak_adcs[i] for i in range(len(peak_adcs)-1)]
     # make kernel density plots after outlier removal
     ax_kde2 = plt.subplot2grid((2, 3), (1, 1))
     peak_cleaner.plot_to_axis(ax_kde2, np.array(peak_cleaner.peak_diffs), thresh=5)
