@@ -119,6 +119,7 @@
 #include "TGraph.h"
 #include "TMath.h"
 #include "TF1.h"
+#include "TFile.h"
 #include "TH2F.h"
 #include "TROOT.h"
 #include "TSystem.h"
@@ -596,6 +597,44 @@ void SaveAsDialog()
     // tr->SaveAs(fi.fFilename);
 }
 
+void SaveToFile(std::string outfpn)
+{
+    tr->SaveAs(outfpn.c_str());
+
+    // make a tree to store metadata of the configuration parameters
+    Int_t board;
+    Int_t channel;
+    Float_t DAC;
+    Bool_t isTrigger;
+    Int_t preampGain;
+    Int_t channelBias;
+
+    TFile f(outfpn.c_str(), "update");
+    TTree* tr_meta = new TTree("metadata", "A tree for configuration parameters");
+    tr_meta->Branch("board", &board, "board/I");
+    tr_meta->Branch("channel", &channel, "channel/I");
+    tr_meta->Branch("DAC", &DAC, "DAC/F");
+    tr_meta->Branch("isTrigger", &isTrigger, "isTrigger/O");
+    tr_meta->Branch("preampGain", &preampGain, "preampGain/I");
+    tr_meta->Branch("channelBias", &channelBias, "channelBias/I");
+
+    // fill the metadata tree
+    for(int i = 0; i < t->nclients; i++)
+        for(int j = 0; j < 32; j++)
+        {
+            board = i;
+            channel = j;
+            DAC = thr_vals[i];
+            isTrigger = fChanEnaTrig[i][j]->IsOn();
+            preampGain = fChanGain[i][j]->GetNumber();
+            channelBias = fChanBias[i][j]->GetNumber();
+            tr_meta->Fill();
+        }
+    f.cd();
+    tr_meta->Write();
+    f.Close();
+}
+
 extern "C" {
     void SelectBoard()
     {
@@ -665,6 +704,7 @@ UInt_t ts0_ref_mon, ts1_ref_mon;
 Bool_t NOts0_mon=false,NOts1_mon=false;
 //UChar_t mac5=0x00;
 Long_t ns_epoch; // My variable. Nanoseconds since epoch.
+Float_t trig_rate;
 
 void RescanNet()
 {
@@ -732,6 +772,7 @@ int Init(const char *iface="eth1")
     tr->Branch("ts0_ref",&ts0_ref,"ts0_ref/i");
     tr->Branch("ts1_ref",&ts1_ref,"ts1_ref/i");
     tr->Branch("ns_epoch", &ns_epoch, "ns_epoch/L");
+    tr->Branch("trig_rate", &trig_rate, "trig_rate/F");
 
     BenchMark=new TBenchmark();
     BenchMark->Start("Poll");
@@ -842,6 +883,11 @@ void FillHistos(int truncat)  // hook called by libFEBDTP when event is received
         // before fill the tree, store the time stamp as recorded by the current application
         auto curtime = std::chrono::high_resolution_clock::now();
         ns_epoch = curtime.time_since_epoch().count();
+        // store the instantaneous trigger rate
+        trig_rate = 0;
+        for(int bid = 0; bid < t->nclients; bid++)
+            if(t->dstmac[5] == t->macs[bid][5])
+                trig_rate = rate[bid];
         tr->Fill();
         if(t->dstmac[5] == t->macs[slowerBoard][5])
         {
@@ -1469,9 +1515,9 @@ void FEBGUI()
     fTextButton111->SetWrapLength(-1);
     fTextButton111->Resize(123,22);
     fGroupFrame679->AddFrame(fTextButton111, new TGLayoutHints(kLHintsLeft| kLHintsCenterX  | kLHintsTop | kLHintsExpandX,0,0,2,2));
-    fTextButton111->SetCommand("tr->SaveAs(\"mppc.root\");");
-    // bring up a dialog for a file name at will
-    // fTextButton111->SetCommand("SaveAsDialog()");
+    // fTextButton111->SetCommand("tr->SaveAs(\"mppc.root\");");
+    // save mppc data to file as well as hardware settings
+    fTextButton111->SetCommand("SaveToFile(\"mppc.root\");");
 
     fLabel7 = new TGLabel(fGroupFrame679,"0xHH");
     fLabel7->SetTextJustify(36);

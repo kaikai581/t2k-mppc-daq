@@ -155,7 +155,7 @@ class Window(QWidget):
         # Add tabs
         self.tabs.addTab(self.tab1, 'Simple Control')
         self.tabs.addTab(self.tab2, 'Parameter Scan')
-        self.tabs.addTab(self.tab3, 'Dark Rate Scan')
+        self.tabs.addTab(self.tab3, 'Singal Channel Dark Rate Scan')
         self.tab1.layout = QGridLayout()
         self.tab1.layout.addWidget(self.createVoltageControl(), 0, 0, 1, 1)
         self.tab1.layout.addWidget(self.createPulserControl(), 0, 1, 1, 1)
@@ -271,25 +271,61 @@ class Window(QWidget):
         self.drsChCB = QComboBox()
         self.drsChCB.addItems(['All']+[str(i) for i in range(32)])
         # editors for setting threshold
-        self.drsDac1 = QLineEdit(text='220')
-        self.drsDac2 = QLineEdit(text='220')
-        self.drsEditNEvt = QLineEdit('250000')
+        self.drsDac1From = QLineEdit(text='220')
+        self.drsDac1To = QLineEdit(text='220')
+        self.drsDac1Step = QLineEdit(text='1')
+        ### Legacy variables below
+        self.drsDac2From = QLineEdit(text='220')
+        self.drsDac2To = QLineEdit(text='220')
+        self.drsDac2Step = QLineEdit(text='1')
+        ### Legacy variables above
+        self.drsEditPreGain = QLineEdit(text='55')
+        self.drsEditNEvt = QLineEdit('10000')
         self.drsStartBtn = QPushButton(text='Start Scan')
         self.drsStartBtn.clicked.connect(self.sendDrJsonMsg)
+
         # lay out widgets
         grid = QGridLayout()
-        grid.addWidget(QLabel('FEB'), 0, 0, Qt.AlignCenter)
-        grid.addWidget(self.drsFebCB, 0, 1, Qt.AlignCenter)
-        grid.addWidget(QLabel('Channel'), 0, 2, Qt.AlignCenter)
-        grid.addWidget(self.drsChCB, 0, 3, Qt.AlignCenter)
-        grid.addWidget(QLabel('FEB1 DAC'), 1, 0, Qt.AlignCenter)
-        grid.addWidget(self.drsDac1, 1, 1, Qt.AlignCenter)
-        grid.addWidget(QLabel('FEB2 DAC'), 1, 2, Qt.AlignCenter)
-        grid.addWidget(self.drsDac2, 1, 3, Qt.AlignCenter)
-        grid.addWidget(self.drsFebCB, 0, 1, Qt.AlignCenter)
-        grid.addWidget(QLabel('number of events'), 2, 0, Qt.AlignCenter)
-        grid.addWidget(self.drsEditNEvt, 2, 1, Qt.AlignCenter)
-        grid.addWidget(self.drsStartBtn, 3, 4, Qt.AlignCenter)
+
+        groupBox1 = QGroupBox('Channels to Scan')
+        grid1 = QGridLayout()
+        grid1.addWidget(QLabel('FEB'), 0, 0, Qt.AlignRight)
+        grid1.addWidget(self.drsFebCB, 0, 1, Qt.AlignLeft)
+        grid1.addWidget(QLabel('Channel'), 0, 2, Qt.AlignRight)
+        grid1.addWidget(self.drsChCB, 0, 3, Qt.AlignLeft)
+        groupBox1.setLayout(grid1)
+        grid.addWidget(groupBox1, 0, 0, 1, 5)
+
+        groupBox2 = QGroupBox('Thresholds to Scan')
+        grid2 = QGridLayout()
+        grid2.addWidget(QLabel('from'), 0, 1, Qt.AlignCenter)
+        grid2.addWidget(QLabel('to'), 0, 2, Qt.AlignCenter)
+        grid2.addWidget(QLabel('step'), 0, 3, Qt.AlignCenter)
+        grid2.addWidget(QLabel('DAC'), 1, 0, Qt.AlignRight)
+        grid2.addWidget(self.drsDac1From, 1, 1, Qt.AlignCenter)
+        grid2.addWidget(self.drsDac1To, 1, 2, Qt.AlignCenter)
+        grid2.addWidget(self.drsDac1Step, 1, 3, Qt.AlignCenter)
+        groupBox2.setLayout(grid2)
+        grid.addWidget(groupBox2, 1, 0, 1, 5)
+        
+
+        # grid.addWidget(QLabel('FEB2 DAC from'), 1, 2, Qt.AlignRight)
+        # grid.addWidget(self.drsDac2From, 1, 3, Qt.AlignCenter)
+        # grid.addWidget(QLabel('FEB2 DAC to'), 2, 2, Qt.AlignRight)
+        # grid.addWidget(self.drsDac2To, 2, 3, Qt.AlignCenter)
+        # grid.addWidget(QLabel('FEB2 DAC step'), 3, 2, Qt.AlignRight)
+        # grid.addWidget(self.drsDac2Step, 3, 3, Qt.AlignCenter)
+
+        groupBox3 = QGroupBox('Other Parameters')
+        grid3 = QGridLayout()
+        grid3.addWidget(QLabel('preamp gain'), 0, 0, Qt.AlignRight)
+        grid3.addWidget(self.drsEditPreGain, 0, 1, Qt.AlignLeft)
+        grid3.addWidget(QLabel('number of events'), 0, 2, Qt.AlignRight)
+        grid3.addWidget(self.drsEditNEvt, 0, 3, Qt.AlignLeft)
+        groupBox3.setLayout(grid3)
+        grid.addWidget(groupBox3, 4, 0, 1, 5)
+
+        grid.addWidget(self.drsStartBtn, 5, 4, Qt.AlignCenter)
         return grid
 
     def createParameterScan(self):
@@ -569,8 +605,8 @@ class Window(QWidget):
         packedMsg['dark rate scan'] = dict()
         packedMsg['dark rate scan']['feb'] = self.drsFebCB.currentText()
         packedMsg['dark rate scan']['ch'] = self.drsChCB.currentText()
-        packedMsg['dark rate scan']['dac1'] = self.drsDac1.text()
-        packedMsg['dark rate scan']['dac2'] = self.drsDac2.text()
+        packedMsg['dark rate scan']['dac1'] = self.drsDac1From.text()
+        packedMsg['dark rate scan']['dac2'] = self.drsDac2From.text()
         packedMsg['drs_nevt'] = self.drsEditNEvt.text()
         print('Slow control sending:', json.dumps(packedMsg))
         self.psQueue = []
