@@ -141,7 +141,7 @@ def processed_data_directory():
         os.makedirs(out_dir)
     return out_dir
 
-def process_all_channels(infpn, print_peak_adcs, prominence):
+def process_all_channels(infpn, print_peak_adcs, prominence, left_threshold, right_threshold):
     df = pd.read_hdf(infpn, key='mppc')
     # get all different feb numbers
     feb_nums = list(df.feb_num.value_counts().keys())
@@ -170,7 +170,7 @@ def process_all_channels(infpn, print_peak_adcs, prominence):
     for feb_num in feb_nums:
         for ch_num in ch_nums:
             ch_name = 'b{}_ch{}'.format(feb_num, ch_num)
-            gain[bias_volt][ch_name] = find_gain(df, feb_num, ch_num, print_peak_adcs, prominence)
+            gain[bias_volt][ch_name] = find_gain(df, feb_num, ch_num, print_peak_adcs, prominence, left_threshold, right_threshold)
     with open(outfpn, 'w') as outfile:
         json.dump(gain, outfile)
     # find_gain(df, 0, 5, print_peak_adcs)
@@ -221,6 +221,8 @@ def save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_files', type=str, default='../data/pandas/20200911_180348_mppc_volt58.0_temp20.0.h5', nargs='*')
+    parser.add_argument('-l', '--left_threshold', type=float, default=0.7)
+    parser.add_argument('-r', '--right_threshold', type=float, default=1.4)
     parser.add_argument('-p', '--prominence', type=float, default=250)
     parser.add_argument('--print_peak_adcs', action='store_true')
     args = parser.parse_args()
@@ -233,4 +235,4 @@ if __name__ == '__main__':
     # process all channels of data
     for fpn in args.input_files:
         infpn = fpn
-        process_all_channels(infpn, print_peak_adcs, prominence)
+        process_all_channels(infpn, print_peak_adcs, prominence, args.left_threshold, args.right_threshold)
