@@ -17,7 +17,7 @@ import pandas as pd
 import seaborn as sns
 import statistics
 
-def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
+def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.7, right_threshold=1.4):
 
     # make the plot of a channel
     chvar = 'chg[{}]'.format(ch)
@@ -77,9 +77,7 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
     peak_adcs_orig = peak_adcs.copy()
     peak_cleaner = PeakCleanup(peak_adcs)
     # peak_cleaner.remove_outlier_twice()
-    left_th = 0.7
-    right_th = 1.23
-    peak_cleaner.remove_outlier_by_relative_interval(left_th=left_th, right_th=right_th)
+    peak_cleaner.remove_outlier_by_relative_interval(left_th=left_threshold, right_th=right_threshold)
     peak_adcs = peak_cleaner.peak_adcs
     # peak_diff2 = [peak_adcs[i+1]-peak_adcs[i] for i in range(len(peak_adcs)-1)]
     # make kernel density plots after outlier removal
@@ -118,7 +116,7 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
     # prepare for output
     infn = os.path.basename(infpn)
     outfdname = os.path.join(os.path.dirname(__file__), infn)
-    outfdname = os.path.join('plots', os.path.splitext(outfdname)[0]+'_prom{}'.format(prominence), 'single_channel')
+    outfdname = os.path.join('plots', os.path.splitext(outfdname)[0]+'_prom{}_lth{}_rth{}'.format(prominence, left_threshold, right_threshold), 'single_channel')
     if not os.path.exists(outfdname):
         os.makedirs(outfdname)
 
@@ -132,7 +130,7 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300):
     plt.close()
 
     # save to database
-    save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, r2_gof)
+    save_gain_database(infpn, feb_id, ch, prominence, left_threshold, right_threshold, coeff, r2_gof)
 
     # return the slope (gain)
     return coeff[0], r2_gof
@@ -222,15 +220,17 @@ def save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input_file', type=str, default='../data/pandas/20200911_180348_mppc_volt58.0_temp20.0.h5')
+    parser.add_argument('-i', '--input_files', type=str, default='../data/pandas/20200911_180348_mppc_volt58.0_temp20.0.h5', nargs='*')
     parser.add_argument('-p', '--prominence', type=float, default=250)
     parser.add_argument('--print_peak_adcs', action='store_true')
     args = parser.parse_args()
     global infpn
-    infpn = args.input_file
+    infpn = args.input_files
     global prominence
     prominence = args.prominence
     print_peak_adcs = args.print_peak_adcs
 
     # process all channels of data
-    process_all_channels(infpn, print_peak_adcs, prominence)
+    for fpn in args.input_files:
+        infpn = fpn
+        process_all_channels(infpn, print_peak_adcs, prominence)
