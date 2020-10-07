@@ -6,6 +6,7 @@ from peak_cleanup import PeakCleanup
 from scipy import optimize
 from scipy.signal import find_peaks
 from sympy import Point2D, Line2D
+from sympy.geometry.util import centroid
 import argparse
 import copy
 import matplotlib.pyplot as plt
@@ -75,14 +76,7 @@ def average_distance(z, *params):
     for i in range(len(z)):
         shifted_lines[i+1].shift_peak_id(z[i])
     # then, calculate the intersection points
-    int_pts = []
-    for i in range(len(shifted_lines)):
-        for j in range(i+1, len(shifted_lines)):
-            l1 = shifted_lines[i].line
-            l2 = shifted_lines[j].line
-            pt = l1.intersection(l2)
-            if pt:
-                int_pts.append(pt[0])
+    int_pts = find_intersection_points(shifted_lines)
     tot_dist = 0.
     npts = 0
     for i in range(len(int_pts)):
@@ -110,11 +104,24 @@ def find_best_intersection(lines):
     # print(tot_dist)
     return shifted_lines
 
+def find_intersection_points(lines):
+    int_pts = []
+    for i in range(len(lines)):
+        for j in range(i+1, len(lines)):
+            l1 = lines[i].line
+            l2 = lines[j].line
+            pt = l1.intersection(l2)
+            if pt:
+                int_pts.append(pt[0])
+    return int_pts
+
 def group_shift(lines, shifts):
     assert(len(lines) == len(shifts)+1)
     for i in range(len(shifts)):
         lines[i+1].shift_peak_id(shifts[i])
-    return lines
+    int_pts = find_intersection_points(lines)
+    p_cent = centroid(*int_pts)
+    return lines, p_cent
 
 def loss_function(pts):
     tot_dist = 0.
@@ -123,7 +130,7 @@ def loss_function(pts):
             tot_dist += pts[i].distance(pts[j])
     return tot_dist
 
-def plot_result(lines):
+def plot_result(lines, p_cent, outfpn):
     # plot points for each line
     random.seed(100)
     for line in lines:
@@ -138,8 +145,17 @@ def plot_result(lines):
         xmin = -line.coeff[1]/line.coeff[0]
         fitx = np.linspace(xmin, xmax, 100)
         fity = line.coeff[0]*fitx + line.coeff[1]
-        plt.plot(fitx, fity, '--', alpha=.7, color=rgb)
-    plt.show()
+        plt.plot(fitx, fity, '--', alpha=.7, color=rgb, label='{} V'.format(line.voltage))
+    if p_cent:
+        xx = float(p_cent.x)
+        yy = float(p_cent.y)
+        plt.plot(xx, yy, 'X', color='r')
+        plt.annotate('({:.2f},{:.2f})'.format(xx, yy), xy=(xx, yy), xytext=(xx+0.35, yy-30))
+    plt.legend()
+    plt.xlabel('PE ID')
+    plt.ylabel('ADC')
+    plt.savefig(outfpn)
+    plt.close()
 
 
 if __name__ == '__main__':
@@ -167,8 +183,11 @@ if __name__ == '__main__':
         # best_lines = find_best_intersection(mppc_lines)
         # print(average_distance((0,0,1), mppc_lines))
         resbrute = optimize.brute(average_distance, rranges, args=mppc_lines, full_output=True, finish=None)
-        print(resbrute)
+        # print(resbrute)
     
     # make the resulting plot
-    plot_result(group_shift(best_lines, resbrute[0]))
+    p_cent = None
+    plot_result(mppc_lines, p_cent, 'before.png')
+    lines, p_cent = group_shift(best_lines, resbrute[0])
+    plot_result(lines, p_cent, 'after.png')
     

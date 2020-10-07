@@ -35,7 +35,8 @@ def gain_one_dataset(ds, bid, prom, lth, rth):
     # grid.ax_joint.spines['top'].set_visible(True)
 
     df_good = df[(df['r2'] < 1) & (df['r2'] > 0.99)]
-    df_doubt = df[(df['r2'] == 1) | (df['r2'] < 0.99)]
+    df_doubt = df[df['r2'] < 0.99]
+    df_2pts = df[df['r2'] == 1]
     # ax1 = df_good.plot.scatter(x='channel ID',y='gain')
     # df_doubt.plot.scatter(x='channel ID',y='gain', ax=ax1, c='r')
     # print(df_good)
@@ -43,10 +44,12 @@ def gain_one_dataset(ds, bid, prom, lth, rth):
 
     # convention implementation
     _, (ax, axhist) = plt.subplots(ncols=2, sharey=True,
-                                 gridspec_kw={"width_ratios" : [3,1], "wspace" : 0})
+                                 gridspec_kw={"width_ratios" : [3,1], "wspace" : 0}, figsize=(13,5))
     ax.scatter(df_good['channel ID'], df_good['gain'], marker='o', c='g', label='good linear fit')
     ax.scatter(df_doubt['channel ID'], df_doubt['gain'], marker='x', c='r', label='bad linear fit')
-    axhist.hist(df['gain'], bins='auto', ec='g', orientation="horizontal", histtype='step')
+    ax.scatter(df_2pts['channel ID'], df_2pts['gain'], marker='x', c='magenta', label='2-point linear fit')
+    # axhist.hist(df['gain'], bins='auto', ec='g', orientation="horizontal", histtype='step')
+    axhist.hist(df['gain'], bins=16, ec='g', orientation="horizontal", histtype='step')
     axhist.tick_params(axis="y", left=False)
 
     ax.set_xlabel('channel ID')
@@ -54,7 +57,7 @@ def gain_one_dataset(ds, bid, prom, lth, rth):
     ax.legend()
     ax.set_title('bias voltage: {} V'.format(get_voltage_from_filename(ds)))
     ax.set_ylim(top=100, bottom=20)
-    ax.grid(axis='y')
+    ax.grid(axis='both')
     axhist.grid(axis='y')
     plt.tight_layout()
 
