@@ -140,6 +140,8 @@ dmypy.json
 *.h5
 *.root
 
-# Processes data directory
+# Processed and output data
 plots/
 processed_data/
+*.jpg
+*.png
