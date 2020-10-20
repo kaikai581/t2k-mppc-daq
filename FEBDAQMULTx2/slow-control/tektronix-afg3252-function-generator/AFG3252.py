@@ -65,9 +65,21 @@ class AFG3252(FunctionGenerator):
             print(e)
 
 
-    def setFrequency(self, frequency):
-        print('Setting fixed frequency to {0}'.format(frequency))
-        self.conn.write('SOUR:FREQ:FIX {0}'.format(frequency))
+    def setBurstTrig(self, ch):
+        self.conn.write('SOUR{}:BURSt:MODE TRIG'.format(ch))
+    
+    def setDutyCycle(self, ch, dc):
+        '''
+        dc is number percentage.
+        '''
+        self.conn.write('SOURce{}:PULSe:DCYCle {}'.format(ch, dc))
+
+    def setFrequency(self, frequency, ch=None):
+        if not ch:
+            print('Setting fixed frequency to {0}'.format(frequency))
+            self.conn.write('SOUR:FREQ:FIX {0}'.format(frequency))
+        else:
+            self.conn.write('SOUR{}:FREQ:FIX {}'.format(ch, frequency))
 
     def setAmplitude(self, ch, V):
         if 1 <= ch <= 2:
@@ -97,13 +109,21 @@ class AFG3252(FunctionGenerator):
         else:
             print('I don\'t have channel {0}'.format(ch))
         
-    def outputType(self, sigType):
-        try:
-            sig = outputMap[sigType]
-            self.conn.write('SOUR:FUNC:SHAP {0}'.format(sig))
+    def outputType(self, sigType, ch=None):
+        if not ch:
+            try:
+                sig = outputMap[sigType]
+                self.conn.write('SOUR:FUNC:SHAP {0}'.format(sig))
 
-        except Exception as e:
-            print(e)
+            except Exception as e:
+                print(e)
+        else:
+            try:
+                sig = outputMap[sigType]
+                self.conn.write('SOUR{}:FUNC:SHAP {}'.format(ch, sig))
+
+            except Exception as e:
+                print(e)
     
     def querySetAmplitude(self, ch):
         if 1 <= ch <= 2:

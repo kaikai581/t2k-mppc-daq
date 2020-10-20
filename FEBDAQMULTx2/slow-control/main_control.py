@@ -101,7 +101,7 @@ class Window(QWidget):
 
         # function generator stars with fg
         self.fgChSel = QComboBox()
-        self.fgChSel.addItems(['1', '2'])
+        self.fgChSel.addItems(['1', '2', 'all'])
         self.fgChSel.setCurrentIndex(0)
         self.fgOutputSwitch = QPushButton(text='Switch On')
         self.fgOutputSwitch.setCheckable(True)
@@ -228,6 +228,7 @@ class Window(QWidget):
         self.devPowerUnit.power_off(active_ch)
         ## turn off the function generator
         self.devFunGen.disableOutput(1)
+        self.devFunGen.disableOutput(2)
         
         return super().closeEvent(a0)
 
@@ -512,7 +513,12 @@ class Window(QWidget):
             # setting background color to light-blue 
             self.fgOutputSwitch.setStyleSheet("background-color : lightgreen")
             self.fgOutputSwitch.setText('Switch Off')
-            self.devFunGen.enableOutput(1)
+            ch_str = self.fgChSel.currentText()
+            if ch_str in ['1', '2']:
+                self.devFunGen.enableOutput(int(ch_str))
+            else:
+                self.devFunGen.enableOutput(1)
+                self.devFunGen.enableOutput(2)
   
         # if it is unchecked 
         else: 
@@ -520,7 +526,12 @@ class Window(QWidget):
             # set background color back to light-grey 
             self.fgOutputSwitch.setStyleSheet("background-color : lightgrey")
             self.fgOutputSwitch.setText('Switch On')
-            self.devFunGen.disableOutput(1)
+            ch_str = self.fgChSel.currentText()
+            if ch_str in ['1', '2']:
+                self.devFunGen.disableOutput(int(ch_str))
+            else:
+                self.devFunGen.disableOutput(1)
+                self.devFunGen.disableOutput(2)
     
     def fgApplyAmpl(self):
         ampl = float(self.fgAmplEdit.text())
@@ -574,7 +585,7 @@ class Window(QWidget):
         # if button is checked
         if self.puVoltageSwitch.isChecked(): 
             # voltage safeguard
-            vol_uplim = 60
+            vol_uplim = 62
             Vset = float(self.puVsetEdit.text())
             if Vset > vol_uplim:
                 print('Input voltage {} V is too high!'.format(vol_uplim))
