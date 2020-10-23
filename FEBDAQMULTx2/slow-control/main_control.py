@@ -617,7 +617,10 @@ class Window(QWidget):
         packedMsg['dark rate scan']['feb'] = self.drsFebCB.currentText()
         packedMsg['dark rate scan']['ch'] = self.drsChCB.currentText()
         packedMsg['dark rate scan']['dac1'] = self.drsDac1From.text()
+        packedMsg['dark rate scan']['dac1_to'] = self.drsDac1To.text()
+        packedMsg['dark rate scan']['dac1_step'] = self.drsDac1Step.text()
         packedMsg['dark rate scan']['dac2'] = self.drsDac2From.text()
+        packedMsg['dark rate scan']['preamp_gain'] = self.drsEditPreGain.text()
         packedMsg['drs_nevt'] = self.drsEditNEvt.text()
         print('Slow control sending:', json.dumps(packedMsg))
         self.psQueue = []

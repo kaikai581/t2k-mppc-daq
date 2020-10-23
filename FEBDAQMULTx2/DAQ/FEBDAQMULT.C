@@ -377,10 +377,11 @@ void UpdateConfig()
     uint8_t bufFIL[256]; 
 
     //t->ReadBitStream("CITIROC_SCbitstream_TESTS.txt",bufSCR);
-    t->ReadBitStream("CITIROC_PROBEbitstream.txt",bufPMR);
+    
     for(int feb=0; feb<t->nclients; feb++)
     {
         SetDstMacByIndex(feb);
+        t->ReadBitStream("CITIROC_PROBEbitstream.txt",bufPMR);
         //t->dstmac[5]=0xff; //Broadcast
         sprintf(bsname,"CITIROC_SC_SN%03d.txt",t->dstmac[5]);
         //if(!(t->ReadBitStream(bsname,bufSCR))) t->ReadBitStream("CITIROC_SC_DEFAULT.txt",bufSCR);
@@ -524,6 +525,9 @@ void SendConfig()
     uint32_t trigmask=0;
     uint8_t bufFIL[256]; 
 
+    // specify the board to configure
+    SetDstMacByIndex(BoardToMon);
+
     for(int i=265; i<265+32;i++)
         if(fChanEnaTrig[BoardToMon][i-265]->IsOn()) ConfigSetBit(bufSCR,1144,i,1); else  ConfigSetBit(bufSCR,1144,i,0);
 
@@ -544,7 +548,7 @@ void SendConfig()
 
     //for(int feb=0; feb<t->nclients; feb++)
     // {
-    SetDstMacByIndex(BoardToMon);
+    
     // t->dstmac[5]=0xff; //Broadcast
     t->SendCMD(t->dstmac,FEB_WR_SCR,0x0000,bufSCR);
     t->SendCMD(t->dstmac,FEB_WR_PMR,0x0000,bufPMR);
@@ -597,11 +601,8 @@ void SaveAsDialog()
     // tr->SaveAs(fi.fFilename);
 }
 
-void SaveToFile(std::string outfpn)
+void SaveMetadata(std::string outfpn)
 {
-    tr->SaveAs(outfpn.c_str());
-
-    // make a tree to store metadata of the configuration parameters
     Int_t board;
     Int_t channel;
     Float_t DAC;
@@ -633,6 +634,14 @@ void SaveToFile(std::string outfpn)
     f.cd();
     tr_meta->Write();
     f.Close();
+}
+
+void SaveToFile(std::string outfpn)
+{
+    tr->SaveAs(outfpn.c_str());
+
+    // make a tree to store metadata of the configuration parameters
+    SaveMetadata(outfpn);
 }
 
 extern "C" {
@@ -1975,6 +1984,7 @@ void ProcessMessage(std::string msg)
 
     // make sure output directory exists
     gROOT->ProcessLine(".! mkdir -p output_data");
+    gROOT->ProcessLine(".! mkdir -p rate_scan_data");
 
     // For useage examples, see
     // https://rapidjson.org/md_doc_tutorial.html
@@ -2079,8 +2089,14 @@ void ProcessMessage(std::string msg)
         // set threshold of board 1 and 2
         float thr1 = std::atof(document["dark rate scan"]["dac1"].GetString());
         float thr2 = std::atof(document["dark rate scan"]["dac2"].GetString());
+        int preamp_gain = std::atoi(document["dark rate scan"]["preamp_gain"].GetString());
+        // set up the threshold
         thr_vals[0] = thr1;
         thr_vals[1] = thr2;
+        // set up the preamp gain
+        for(int bid = 0; bid < t->nclients; bid++)
+            for(int cid = 0; cid < 32; cid++)
+                fChanGain[bid][cid]->SetNumber(preamp_gain);
         // remember the current tab
         int curTabId = fTab683->GetCurrent();
         // change values on the GUI
@@ -2089,12 +2105,14 @@ void ProcessMessage(std::string msg)
         fNumberEntry755->SetNumber(thr1);
         fTab683->SetTab(0);
         SelectBoard();
+        SetDstMacByIndex(0);
         GUI_UpdateThreshold();
-        // BoardToMon = 1;
-        // fNumberEntry755->SetNumber(thr2);
-        // fTab683->SetTab(7);
-        // SelectBoard();
-        // GUI_UpdateThreshold();
+        BoardToMon = 1;
+        fNumberEntry755->SetNumber(thr2);
+        fTab683->SetTab(7);
+        SelectBoard();
+        SetDstMacByIndex(1);
+        GUI_UpdateThreshold();
 
         // restore settings
         BoardToMon = activeFeb;
@@ -2104,6 +2122,12 @@ void ProcessMessage(std::string msg)
         for(unsigned int bIdx = 0; bIdx < drsFebs.size(); bIdx++)
         {
             int curFeb = drsFebs[bIdx];
+            // safeguard the FEB ID
+            if(curFeb >= t->nclients)
+            {
+                std::cout << "FEB " << curFeb << " is not detected." << std::endl;
+                continue;
+            }
             for(unsigned int cIdx = 0; cIdx < drsChs.size(); cIdx++)
             {
                 int curCh = drsChs[cIdx];
@@ -2135,7 +2159,9 @@ void ProcessMessage(std::string msg)
                 if(RunOn == 0) StartDAQ(drsNEvt);
                 // save to disk
                 TDatime tdt;
-                tr->SaveAs(Form("output_data/%d_%d_dark_rate_feb%d_ch%d_thr1_%.1lf_thr2_%.1lf.root", tdt.GetDate(), tdt.GetTime(), curFeb, curCh, thr1, thr2));
+                char* outfpn = Form("rate_scan_data/%d_%d_dark_rate_feb%d_ch%d_thr1_%.1lf_thr2_%.1lf.root", tdt.GetDate(), tdt.GetTime(), curFeb, curCh, thr1, thr2);
+                tr->SaveAs(outfpn);
+                SaveMetadata(std::string(outfpn));
 
                 // After data taking finishes, signal slow control I am ready.
                 const char json_ready[] = " { \"daq status\" : \"ready\" } ";
