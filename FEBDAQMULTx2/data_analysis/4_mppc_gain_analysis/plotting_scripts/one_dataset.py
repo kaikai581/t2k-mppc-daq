@@ -80,7 +80,7 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--board', type=int, default=-1)
     parser.add_argument('-p', '--prominence', type=int, default=250)
     parser.add_argument('-l', '--left_threshold', type=float, default=0.7)
-    parser.add_argument('-r', '--right_threshold', type=float, default=1.23)
+    parser.add_argument('-r', '--right_threshold', type=float, default=1.4)
     args = parser.parse_args()
     
     # plot one dataset

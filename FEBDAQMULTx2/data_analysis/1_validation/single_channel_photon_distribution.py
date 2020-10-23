@@ -23,7 +23,7 @@ def board_trigger_rate(df, feb_id):
     print('max time0: {}\nmin time0: {}'.format(ts0_max, ts0_min))
     print('max time1: {}\nmin time1: {}'.format(ts1_max, ts1_min))
 
-def plot_32_channels(df, feb_id):
+def plot_32_channels(df, feb_id, plot_linear):
 
     # select data of the specified board
     df_1b = df[df['feb_num'] == feb_id]
@@ -44,7 +44,8 @@ def plot_32_channels(df, feb_id):
         df_1b[chvar].plot.hist(bins=bins, histtype='step', ax=cur_ax)
         cur_ax.set_xlabel('ADC')
         cur_ax.set_ylabel('')
-        cur_ax.set_yscale('log')
+        if not plot_linear:
+            cur_ax.set_yscale('log')
         cur_ax.text(0.7, 0.6,'FEB {} ch {}'.format(feb_id, ch), ha='center',
                     va='center', transform=cur_ax.transAxes, color='r')
     
@@ -55,7 +56,7 @@ def plot_32_channels(df, feb_id):
     outfdname = os.path.join(os.path.splitext(outfdname)[0], 'all_channels')
     if not os.path.exists(outfdname):
         os.makedirs(outfdname)
-    outfig_pn = os.path.join(outfdname, 'board{}.png'.format(feb_id))
+    outfig_pn = os.path.join(outfdname, 'board{}{}.png'.format(feb_id, '_linear' if plot_linear else ''))
     print('Saving output to {}'.format(outfig_pn))
     plt.savefig(outfig_pn)
 
@@ -90,16 +91,18 @@ def main():
            default='mppc_20200728.root')
     parser.add_argument('-b', '--board_id', type=int, default=0)
     parser.add_argument('-c', '--channel', type=int, default=0)
+    parser.add_argument('-l', '--linear', action='store_true', help='Make all plots in linear scale.')
     args = parser.parse_args()
     global infpn
     infpn = args.input_filename
     board_id = args.board_id
     channel = args.channel
+    linear_plots = args.linear
 
     # read data with uproot
     global infn
     infn = os.path.basename(infpn)
-    infpn = os.path.join(os.path.dirname(__file__), '../data', infn)
+    infpn = os.path.join(os.path.dirname(__file__), '../data/root', infn)
     tr = uproot.open(infpn)['mppc']
     df = tr.pandas.df()
     # add a row for FEB board ID according to the mac5 value
@@ -113,7 +116,7 @@ def main():
     if channel >= 0:
         single_channel_plot(df, board_id, channel)
     else:
-        plot_32_channels(df, board_id)
+        plot_32_channels(df, board_id, linear_plots)
         board_trigger_rate(df, board_id)
 
 if __name__ == '__main__':
