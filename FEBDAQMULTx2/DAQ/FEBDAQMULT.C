@@ -121,6 +121,7 @@
 #include "TF1.h"
 #include "TFile.h"
 #include "TH2F.h"
+#include "TLeaf.h"
 #include "TROOT.h"
 #include "TSystem.h"
 #include "TTree.h"
@@ -1970,6 +1971,86 @@ bool DumpFW(uint32_t startaddr=0, uint16_t blocks=1)
     return retval;
 }
 
+void RateScanSummary(std::string srcfpn, int dateID, int timeID, int curFeb, int curCh, float thr, int drsNEvt)
+{
+    // open or create the summary file
+    char* outfpn = Form("rate_scan/summary/%d_%d_dark_rate_summary.root", dateID, timeID);
+    TFile toutf = TFile(outfpn, "update");
+    TTree* tr_rate;
+    
+    // assign tree branches
+    Int_t board;
+    Int_t channel;
+    Int_t nevtSet;
+    Float_t DAC;
+    Bool_t isTrigger;
+    Int_t preampGain;
+    Int_t channelBias;
+    Int_t nrate;
+    Float_t meanRate;
+    std::vector<float> rates;
+
+    // If the tree exists, open it. Otherwise, create it.
+    // Ref: https://root-forum.cern.ch/t/appending-to-a-ttree-or-creating-if-it-does-not-exist/17974
+    tr_rate = (TTree*)toutf.Get("tr_rate");
+    if(!tr_rate)
+    {
+        tr_rate = new TTree("tr_rate", "ntuple for rate scan results");
+        tr_rate->Branch("mac5", &mac5, "mac5/b");
+        tr_rate->Branch("board", &board, "board/I");
+        tr_rate->Branch("channel", &channel, "channel/I");
+        tr_rate->Branch("nevtSet", &nevtSet, "nevtSet/I");
+        tr_rate->Branch("DAC", &DAC, "DAC/F");
+        tr_rate->Branch("isTrigger", &isTrigger, "isTrigger/O");
+        tr_rate->Branch("preampGain", &preampGain, "preampGain/I");
+        tr_rate->Branch("channelBias", &channelBias, "channelBias/I");
+        tr_rate->Branch("nrate", &nrate, "nrate/I");
+        tr_rate->Branch("meanRate", &meanRate, "meanRate/F");
+        // tr_rate->Branch("rates", &rates);
+    }
+    else
+    {
+        tr_rate->GetBranch("mac5")->SetAddress(&mac5);
+        tr_rate->GetBranch("board")->SetAddress(&board);
+        tr_rate->GetBranch("channel")->SetAddress(&channel);
+        tr_rate->GetBranch("nevtSet")->SetAddress(&nevtSet);
+        tr_rate->GetBranch("DAC")->SetAddress(&DAC);
+        tr_rate->GetBranch("isTrigger")->SetAddress(&isTrigger);
+        tr_rate->GetBranch("preampGain")->SetAddress(&preampGain);
+        tr_rate->GetBranch("channelBias")->SetAddress(&channelBias);
+        tr_rate->GetBranch("nrate")->SetAddress(&nrate);
+        tr_rate->GetBranch("meanRate")->SetAddress(&meanRate);
+        // tr_rate->GetBranch("rates")->SetAddress(rates);
+    }
+    
+
+    // fill the rate tree
+    board = curFeb;
+    channel = curCh;
+    nevtSet = drsNEvt;
+    DAC = thr;
+    isTrigger = fChanEnaTrig[curFeb][curCh]->IsOn();
+    preampGain = fChanGain[curFeb][curCh]->GetNumber();
+    channelBias = fChanBias[curFeb][curCh]->GetNumber();
+    // calculate the mean trigger rate
+    TFile tinf = TFile(srcfpn.c_str());
+    TTree* mppc = (TTree*)tinf.Get("mppc");
+    for(int i = 0; i < mppc->GetEntries(); i++)
+    {
+        mppc->GetEntry(i);
+        float rate = mppc->GetLeaf("trig_rate")->GetValue();
+        if(rate > 0) rates.push_back(rate);
+    }
+    if(rates.size()) meanRate = TMath::Mean(rates.begin(), rates.end());
+    else meanRate = 0;
+    nrate = rates.size();
+    tr_rate->Fill();
+
+    toutf.cd();
+    tr_rate->Write("", TObject::kOverwrite);
+    toutf.Close();
+}
+
 void ProcessMessage(std::string msg)
 {
     Document document;
@@ -1984,7 +2065,8 @@ void ProcessMessage(std::string msg)
 
     // make sure output directory exists
     gROOT->ProcessLine(".! mkdir -p output_data");
-    gROOT->ProcessLine(".! mkdir -p rate_scan_data");
+    gROOT->ProcessLine(".! mkdir -p rate_scan/raw_data");
+    gROOT->ProcessLine(".! mkdir -p rate_scan/summary");
 
     // For useage examples, see
     // https://rapidjson.org/md_doc_tutorial.html
@@ -2086,86 +2168,97 @@ void ProcessMessage(std::string msg)
             for(int i = 0; i < 32; i++) drsChs.push_back(i);
         else drsChs.push_back(std::stoi(document["dark rate scan"]["ch"].GetString()));
         
-        // set threshold of board 1 and 2
-        float thr1 = std::atof(document["dark rate scan"]["dac1"].GetString());
-        float thr2 = std::atof(document["dark rate scan"]["dac2"].GetString());
+        // get thresholds to scan
+        float thr_from = std::atof(document["dark rate scan"]["dac1_from"].GetString());
+        float thr_to = std::atof(document["dark rate scan"]["dac1_to"].GetString());
+        float thr_step = std::atof(document["dark rate scan"]["dac1_step"].GetString());
+        // get preamp gain setting
         int preamp_gain = std::atoi(document["dark rate scan"]["preamp_gain"].GetString());
-        // set up the threshold
-        thr_vals[0] = thr1;
-        thr_vals[1] = thr2;
-        // set up the preamp gain
+        // set up preamp gain
         for(int bid = 0; bid < t->nclients; bid++)
             for(int cid = 0; cid < 32; cid++)
                 fChanGain[bid][cid]->SetNumber(preamp_gain);
-        // remember the current tab
-        int curTabId = fTab683->GetCurrent();
-        // change values on the GUI
-        int activeFeb = BoardToMon;
-        BoardToMon = 0;
-        fNumberEntry755->SetNumber(thr1);
-        fTab683->SetTab(0);
-        SelectBoard();
-        SetDstMacByIndex(0);
-        GUI_UpdateThreshold();
-        BoardToMon = 1;
-        fNumberEntry755->SetNumber(thr2);
-        fTab683->SetTab(7);
-        SelectBoard();
-        SetDstMacByIndex(1);
-        GUI_UpdateThreshold();
 
-        // restore settings
-        BoardToMon = activeFeb;
-        fTab683->SetTab(curTabId);
 
-        //***** Start DAQ *****
-        for(unsigned int bIdx = 0; bIdx < drsFebs.size(); bIdx++)
+        // get date and time as the file group ID
+        TDatime tdt;
+        int dateID = tdt.GetDate();
+        int timeID = tdt.GetTime();
+        // the outermost for loop to scan through thresholds
+        for(float thr = thr_from; thr <= thr_to; thr += thr_step)
         {
-            int curFeb = drsFebs[bIdx];
-            // safeguard the FEB ID
-            if(curFeb >= t->nclients)
+            // set up the threshold
+            thr_vals[0] = thr;
+            thr_vals[1] = thr;
+
+            // remember the current tab
+            int curTabId = fTab683->GetCurrent();
+            // change values on the GUI and send configuration to FEB
+            int activeFeb = BoardToMon;
+            for(int bid = 0; bid < t->nclients; bid++)
             {
-                std::cout << "FEB " << curFeb << " is not detected." << std::endl;
-                continue;
+                BoardToMon = bid;
+                fNumberEntry755->SetNumber(thr);
+                fTab683->SetTab(bid);
+                SelectBoard();
+                SetDstMacByIndex(bid);
+                GUI_UpdateThreshold();
             }
-            for(unsigned int cIdx = 0; cIdx < drsChs.size(); cIdx++)
+
+            // restore settings
+            BoardToMon = activeFeb;
+            fTab683->SetTab(curTabId);
+
+            //***** Start DAQ *****
+            for(unsigned int bIdx = 0; bIdx < drsFebs.size(); bIdx++)
             {
-                int curCh = drsChs[cIdx];
-                // Check only one channel at a time according to
-                // the current iteration in the scan.
-                for(int chItr = 0; chItr < 32; chItr++)
+                int curFeb = drsFebs[bIdx];
+                // safeguard the FEB ID
+                if(curFeb >= t->nclients)
                 {
-                    for(int fItr = 0; fItr < nboard; fItr++)
-                    {
-                        if((chItr == curCh) && (fItr == curFeb))
-                            fChanEnaTrig[fItr][chItr]->SetState(kButtonDown);
-                        else // clear all others
-                            fChanEnaTrig[fItr][chItr]->SetState(kButtonUp);
-                    }
+                    std::cout << "FEB " << curFeb << " is not detected." << std::endl;
+                    continue;
                 }
+                for(unsigned int cIdx = 0; cIdx < drsChs.size(); cIdx++)
+                {
+                    int curCh = drsChs[cIdx];
+                    // Check only one channel at a time according to
+                    // the current iteration in the scan.
+                    for(int chItr = 0; chItr < 32; chItr++)
+                    {
+                        for(int fItr = 0; fItr < nboard; fItr++)
+                        {
+                            if((chItr == curCh) && (fItr == curFeb))
+                                fChanEnaTrig[fItr][chItr]->SetState(kButtonDown);
+                            else // clear all others
+                                fChanEnaTrig[fItr][chItr]->SetState(kButtonUp);
+                        }
+                    }
 
-                // First, signal slow control I am busy.
-                const char json[] = " { \"daq status\" : \"busy\" } ";
-                SendMsg2SlowCtrl(json);
+                    // First, signal slow control I am busy.
+                    const char json[] = " { \"daq status\" : \"busy\" } ";
+                    SendMsg2SlowCtrl(json);
 
-                // Enable OR32
-                fChanEnaTrig[curFeb][32]->SetState(kButtonDown);
-                // apply the settings
-                SendConfig2All();
-                // clear the data container
-                Reset();
-                // Start taking data!
-                slowerBoard = curFeb;
-                if(RunOn == 0) StartDAQ(drsNEvt);
-                // save to disk
-                TDatime tdt;
-                char* outfpn = Form("rate_scan_data/%d_%d_dark_rate_feb%d_ch%d_thr1_%.1lf_thr2_%.1lf.root", tdt.GetDate(), tdt.GetTime(), curFeb, curCh, thr1, thr2);
-                tr->SaveAs(outfpn);
-                SaveMetadata(std::string(outfpn));
+                    // Enable OR32
+                    fChanEnaTrig[curFeb][32]->SetState(kButtonDown);
+                    // apply the settings
+                    SendConfig2All();
+                    // clear the data container
+                    Reset();
+                    // Start taking data!
+                    slowerBoard = curFeb;
+                    if(RunOn == 0) StartDAQ(drsNEvt);
+                    // save to disk
+                    char* outfpn = Form("rate_scan/raw_data/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", dateID, timeID, curFeb, curCh, thr);
+                    tr->SaveAs(outfpn);
+                    SaveMetadata(std::string(outfpn));
+                    // summarize this scan
+                    RateScanSummary(std::string(outfpn), dateID, timeID, curFeb, curCh, thr, drsNEvt);
 
-                // After data taking finishes, signal slow control I am ready.
-                const char json_ready[] = " { \"daq status\" : \"ready\" } ";
-                SendMsg2SlowCtrl(json_ready);
+                    // After data taking finishes, signal slow control I am ready.
+                    const char json_ready[] = " { \"daq status\" : \"ready\" } ";
+                    SendMsg2SlowCtrl(json_ready);
+                }
             }
         }
     }

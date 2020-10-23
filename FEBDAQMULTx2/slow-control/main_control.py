@@ -616,7 +616,7 @@ class Window(QWidget):
         packedMsg['dark rate scan'] = dict()
         packedMsg['dark rate scan']['feb'] = self.drsFebCB.currentText()
         packedMsg['dark rate scan']['ch'] = self.drsChCB.currentText()
-        packedMsg['dark rate scan']['dac1'] = self.drsDac1From.text()
+        packedMsg['dark rate scan']['dac1_from'] = self.drsDac1From.text()
         packedMsg['dark rate scan']['dac1_to'] = self.drsDac1To.text()
         packedMsg['dark rate scan']['dac1_step'] = self.drsDac1Step.text()
         packedMsg['dark rate scan']['dac2'] = self.drsDac2From.text()
