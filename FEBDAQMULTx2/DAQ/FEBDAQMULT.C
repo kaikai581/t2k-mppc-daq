@@ -1988,6 +1988,7 @@ void RateScanSummary(std::string srcfpn, int dateID, int timeID, int curFeb, int
     Int_t channelBias;
     Int_t nrate;
     Float_t meanRate;
+    Float_t meanRate_sw; // software mean rate
     std::vector<float> rates;
 
     // If the tree exists, open it. Otherwise, create it.
@@ -2006,6 +2007,7 @@ void RateScanSummary(std::string srcfpn, int dateID, int timeID, int curFeb, int
         tr_rate->Branch("channelBias", &channelBias, "channelBias/I");
         tr_rate->Branch("nrate", &nrate, "nrate/I");
         tr_rate->Branch("meanRate", &meanRate, "meanRate/F");
+        tr_rate->Branch("meanRate_sw", &meanRate_sw, "meanRate_sw/F");
         // tr_rate->Branch("rates", &rates);
     }
     else
@@ -2020,6 +2022,7 @@ void RateScanSummary(std::string srcfpn, int dateID, int timeID, int curFeb, int
         tr_rate->GetBranch("channelBias")->SetAddress(&channelBias);
         tr_rate->GetBranch("nrate")->SetAddress(&nrate);
         tr_rate->GetBranch("meanRate")->SetAddress(&meanRate);
+        tr_rate->GetBranch("meanRate_sw")->SetAddress(&meanRate_sw);
         // tr_rate->GetBranch("rates")->SetAddress(rates);
     }
     
@@ -2035,15 +2038,23 @@ void RateScanSummary(std::string srcfpn, int dateID, int timeID, int curFeb, int
     // calculate the mean trigger rate
     TFile tinf = TFile(srcfpn.c_str());
     TTree* mppc = (TTree*)tinf.Get("mppc");
+    long t_start = 0;
+    long t_end = 0;
     for(int i = 0; i < mppc->GetEntries(); i++)
     {
         mppc->GetEntry(i);
         float rate = mppc->GetLeaf("trig_rate")->GetValue();
         if(rate > 0) rates.push_back(rate);
+
+        if(i == 0) t_start = mppc->GetLeaf("ns_epoch")->GetValue();
+        if(i == (mppc->GetEntries()-1))
+            t_end = mppc->GetLeaf("ns_epoch")->GetValue();
     }
-    if(rates.size()) meanRate = TMath::Mean(rates.begin(), rates.end());
+    if(rates.size()) meanRate = 1e3*TMath::Mean(rates.begin(), rates.end());
     else meanRate = 0;
     nrate = rates.size();
+    if(t_end > t_start) meanRate_sw = mppc->GetEntries()/((t_end-t_start)/1e9);
+    else meanRate_sw = 0;
     tr_rate->Fill();
 
     toutf.cd();
@@ -2123,7 +2134,10 @@ void ProcessMessage(std::string msg)
     //     }
     // }
 
-
+    // get date and time as the file group ID
+    TDatime tdt;
+    int dateID = tdt.GetDate();
+    int timeID = tdt.GetTime();
     //***** Handle voltage scan scenario *****
     float vol = 58;
     float temp = 20;
@@ -2144,8 +2158,9 @@ void ProcessMessage(std::string msg)
         slowerBoard = -1;
         if(RunOn == 0) StartDAQ(psNEvt);
         // save to disk
-        TDatime tdt;
-        tr->SaveAs(Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", tdt.GetDate(), tdt.GetTime(), vol, temp));
+        char* outfpn = Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", dateID, timeID, vol, temp);
+        tr->SaveAs(outfpn);
+        SaveMetadata(std::string(outfpn));
 
         // After data taking finishes, signal slow control I am ready.
         const char json_ready[] = " { \"daq status\" : \"ready\" } ";
@@ -2180,10 +2195,6 @@ void ProcessMessage(std::string msg)
                 fChanGain[bid][cid]->SetNumber(preamp_gain);
 
 
-        // get date and time as the file group ID
-        TDatime tdt;
-        int dateID = tdt.GetDate();
-        int timeID = tdt.GetTime();
         // the outermost for loop to scan through thresholds
         for(float thr = thr_from; thr <= thr_to; thr += thr_step)
         {

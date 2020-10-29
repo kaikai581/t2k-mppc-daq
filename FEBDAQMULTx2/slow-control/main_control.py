@@ -94,7 +94,7 @@ class Window(QWidget):
         self.puChCB = QComboBox()
         self.puChCB.addItems(['all', '1', '2', '3', '4'])
         self.puChCB.setCurrentIndex(4)
-        self.puChCB.setEnabled(False)
+        # self.puChCB.setEnabled(False)
         self.puVsetEdit = QLineEdit('58')
         self.puVsetEdit.setValidator(QDoubleValidator(bottom=0, top=60, decimals=10))
         self.puVRbEdit = QLineEdit()
