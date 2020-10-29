@@ -116,7 +116,7 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.
     # prepare for output
     infn = os.path.basename(infpn)
     outfdname = os.path.join(os.path.dirname(__file__), infn)
-    outfdname = os.path.join('plots', os.path.splitext(outfdname)[0]+'_prom{}_lth{}_rth{}'.format(prominence, left_threshold, right_threshold), 'single_channel')
+    outfdname = os.path.join('plots', os.path.splitext(outfdname)[0]+'_prom{}_lth{}_rth{}'.format(prominence, left_threshold, right_threshold), 'single_channel/diagnostic')
     if not os.path.exists(outfdname):
         os.makedirs(outfdname)
 
@@ -131,6 +131,29 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.
 
     # save to database
     save_gain_database(infpn, feb_id, ch, prominence, left_threshold, right_threshold, coeff, r2_gof)
+
+    # make also simple plots with only peaks and linear fit
+    fig, (ax0, ax1) = plt.subplots(nrows=2)
+    histy, bin_edges, _ = ax0.hist(df_1b[chvar], bins=bins, histtype='step')
+    ax0.scatter(np.array(bin_edges)[peaks], np.array(histy)[peaks],
+                   marker=markers.CARETDOWN, color='r', s=20)
+    ax0.set_xlabel('ADC value')
+    ax1.plot(fitx, fity, '--g', alpha=.7)
+    ax1.scatter(x_try, y_try, marker='o', color='r', s=20)
+    ax1.set_xlim(left=-.5, right=len(peak_adcs_orig)-.5)
+    ax1.set_ylim(bottom=0, top=max(peak_adcs_orig)*1.05)
+    ax1.set_xlabel('PE id')
+    ax1.set_ylabel('ADC value')
+    outfdname = os.path.join(os.path.dirname(__file__), infn)
+    outfdname = os.path.join('plots', os.path.splitext(outfdname)[0]+'_prom{}_lth{}_rth{}'.format(prominence, left_threshold, right_threshold), 'single_channel/simple')
+    if not os.path.exists(outfdname):
+        os.makedirs(outfdname)
+    outfig_pn = os.path.join(outfdname, 'bd{}ch{}.png'.format(feb_id, ch))
+    print('Saving output to {}'.format(outfig_pn))
+    ax0.set_title('board {} channel {}'.format(feb_id, ch))
+    plt.tight_layout()
+    plt.savefig(outfig_pn)
+    plt.close()
 
     # return the slope (gain)
     return coeff[0], r2_gof

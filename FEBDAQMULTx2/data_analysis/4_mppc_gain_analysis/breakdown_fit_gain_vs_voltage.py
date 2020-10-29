@@ -5,16 +5,43 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import pandas as pd
 import sys
 
-def process_one_channel(infpn, bnum, cnum):
-    with open(infpn) as json_file:
-        gains = json.load(json_file)
+def gain_voltage_from_dataframe(df):
+    print(df)
+    fn = df['filename'].iloc[0]
+    print(fn)
+    for substr in fn.split('_'):
+        if 'volt' in substr:
+            voltage = substr.lstrip('volt')
+    print(voltage, df['gain'].iloc[[0]][0])
+    return float(voltage), float(df['gain'].iloc[0])
+
+
+def process_one_channel(infpn, datasets, bnum, cnum, prom=250, lth=0.7, rth=1.4):
 
     ch_id = 'b{}_ch{}'.format(bnum, cnum)
-    # x and y points for retrieving breakdown voltage
-    x_vbd = np.array(list(gains.keys())).astype(float)
-    y_vbd = np.array([gains[v][ch_id] for v in gains.keys()])
+    if infpn:
+        with open(infpn) as json_file:
+            gains = json.load(json_file)
+
+        # x and y points for retrieving breakdown voltage
+        x_vbd = np.array(list(gains.keys())).astype(float)
+        y_vbd = np.array([gains[v][ch_id] for v in gains.keys()])
+    else:
+        x_vbd = []
+        y_vbd = []
+        df = pd.read_csv('processed_data/gain_database.csv')
+        for ds in datasets:
+            # select rows
+            df_sel = df[(df['filename'] == ds) & (df['prominence'] == prom) & (df['left_threshold'] == lth) & (df['right_threshold'] == rth) & (df['board'] == bnum) & (df['channel'] == cnum)].reset_index()
+            x, y = gain_voltage_from_dataframe(df_sel)
+            x_vbd.append(x)
+            y_vbd.append(y)
+            print('Working on {}...'.format(ds))
+        x_vbd = np.array(x_vbd)
+        y_vbd = np.array(y_vbd)
 
     # make the linear plot
     coeff, residuals, _, _, _ = np.polyfit(x_vbd, y_vbd, 1, full=True)
@@ -40,7 +67,10 @@ def process_one_channel(infpn, bnum, cnum):
     # plt.show()
 
     # prepare the output folder
-    out_dir = os.path.splitext(os.path.basename(infpn))[0]
+    if infpn:
+        out_dir = os.path.splitext(os.path.basename(infpn))[0]
+    else:
+        out_dir = datasets[0].split('_')[0]
     out_dir = os.path.join('plots', out_dir)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
@@ -52,9 +82,9 @@ def process_one_channel(infpn, bnum, cnum):
 
     return xcept, coeff[0], residuals / (len(x_vbd) - 2)
 
-def process_all_channels(infpn):
-    if not os.path.exists(infpn):
-        print('Input file {} does not exist. Terminating...'.format(infpn))
+def process_all_channels(infpn, ds):
+    if ((not infpn) or (not os.path.exists(infpn))) and len(ds) == 0:
+        print('Input file {} and datasets specified do not exist. Terminating...'.format(infpn))
         sys.exit(-1)
     
     # results containers
@@ -67,7 +97,7 @@ def process_all_channels(infpn):
     for bid in range(2):
         for cid in range(32):
             x_vbd.append(x_cnt)
-            vbd, total_gain, chi2 = process_one_channel(infpn, bid, cid)
+            vbd, total_gain, chi2 = process_one_channel(infpn, ds, bid, cid)
             y_vbd.append(vbd)
             y_totgain.append(total_gain)
             y_chi2.append(chi2)
@@ -105,10 +135,14 @@ def process_all_channels(infpn):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input_file', type=str, default='processed_data/20200911_total_gain_peak_cleanup.txt')
+    group = parser.add_mutually_exclusive_group(required=True)
+    # default to the old fashioned value is default='processed_data/20201020_total_gain_peak_cleanup.txt'
+    group.add_argument('-i', '--input_file', type=str, nargs='?')
+    group.add_argument('-ds', '--datasets', type=str, default='20200911_180348_mppc_volt58.0_temp20.0.h5', nargs='*')
     args = parser.parse_args()
     infpn = args.input_file
+    ds = args.datasets
 
     # fit a line on gain vs voltage and
     # infer the breakdown voltage
-    process_all_channels(infpn)
+    process_all_channels(infpn, ds)
