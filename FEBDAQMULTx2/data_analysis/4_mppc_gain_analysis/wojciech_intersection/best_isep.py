@@ -2,6 +2,7 @@
 
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from matplotlib import markers
 from peak_cleanup import PeakCleanup
 from scipy import optimize
 from scipy.signal import find_peaks
@@ -13,47 +14,125 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import random
+import uproot
 
 class MPPCLine:
-    def __init__(self, infpn, feb_id, ch):
+    def __init__(self, infpn, feb_id, ch, verbose=False):
         '''
         The constructor is responsible for finding peak positions given
         a filename and a channel ID.
         '''
-        try:
-            df = pd.read_hdf(infpn, key='mppc')
-        except:
-            print('Error reading file {}'.format(infpn))
-            return
+        if verbose:
+            print('Processing:\n', infpn)
+        # get the dataframe either from a .h5 file or a .root file directly
+        fext = os.path.splitext(infpn)[1]
+        if fext == '.h5':
+            try:
+                df = pd.read_hdf(infpn, key='mppc')
+            except:
+                print('Error reading file {}'.format(infpn))
+                sys.exit(-1)
+                return
+        elif fext == '.root':
+            tr_mppc = uproot.open(infpn)['mppc']
+            df = tr_mppc.pandas.df()
+            mac5s = list(df.mac5.unique())
+            df['feb_num'] = df['mac5'].apply(lambda x: mac5s.index(x))
+            if verbose:
+                print('Converted dataframe from ROOT:\n', df)
+        else:
+            print('File format is neither a hdf5 nor a root.')
+            sys.exit(-1)
 
+        # store verbosity
+        self.verbose = verbose
+        # store the input file name
+        self.infpn = infpn
         # make the plot of a channel
-        chvar = 'chg[{}]'.format(ch)
+        self.feb_id = feb_id
+        self.chvar = 'chg[{}]'.format(ch)
         # select data of the specified board
-        df_1b = df[df['feb_num'] == feb_id]
+        self.df_1b = df[df['feb_num'] == feb_id]
+        if verbose:
+            print('FEB{} dataframe:\n'.format(feb_id), self.df_1b)
         # make histogram and find peaks
-        bins = np.linspace(0, 4100, 821)
+        self.bins = np.linspace(0, 4100, 821)
         _, axs = plt.subplots(2)
-        histy, bin_edges, _ = axs[0].hist(df_1b[chvar], bins=bins, histtype='step')
-        peaks, _ = find_peaks(histy, prominence=300)
+        histy, bin_edges, _ = axs[0].hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
+        self.peaks, _ = find_peaks(histy, prominence=300)
+        if verbose:
+            print('Found peaks with heights:\n', self.peaks)
         
         # release memory
         plt.close()
 
         # store processed data
-        pc = PeakCleanup(list(np.array(bin_edges)[peaks]))
+        pc = PeakCleanup(list(np.array(bin_edges)[self.peaks]))
         pc.remove_outlier_by_relative_interval()
         self.peak_adcs = pc.peak_adcs
+        if verbose:
+            print('Peak ADCs:\n', self.peak_adcs)
         self.points = [Point2D(i, self.peak_adcs[i]) for i in range(len(self.peak_adcs))]
 
         # fit a line to the points
-        x_try = np.array([p.x for p in self.points]).astype(float)
-        y_try = np.array([p.y for p in self.points]).astype(float)
-        self.coeff = np.polyfit(x_try, y_try, 1)
-        self.line = Line2D(Point2D(0, self.coeff[1]), slope=self.coeff[0])
+        if len(self.peaks) > 1:
+            self.line, self.coeff = self.get_line_from_points(self.points)
 
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
     
+    def get_line_from_points(self, pts):
+        # fit a line to the points
+        x_try = np.array([p.x for p in pts]).astype(float)
+        y_try = np.array([p.y for p in pts]).astype(float)
+        coeff = np.polyfit(x_try, y_try, 1)
+        return Line2D(Point2D(0, coeff[1]), slope=coeff[0]), coeff
+    
+    def get_threshold_from_metadata(self):
+        # get the dataframe either from a .h5 file or a .root file directly
+        fext = os.path.splitext(self.infpn)[1]
+        if fext == '.h5':
+            try:
+                df = pd.read_hdf(infpn, key='metadata')
+            except:
+                print('Error reading metadata from {}'.format(self.infpn))
+                return 0
+        elif fext == '.root':
+            tr_mppc = uproot.open(self.infpn)['metadata']
+            df = tr_mppc.pandas.df()
+        df_selch = df[df['isTrigger'] == True]
+
+        if len(df_selch) >= 1:
+            return df_selch['DAC'].iloc[0]
+        
+        return -1
+
+    def shift_and_match(self, pkadcs):
+        '''
+        This method shifts the peak IDs to the left or right in a small range,
+        and find the best fit to the peak ADC input array.
+        The "pkadcs" is a known input array in which the index is the peak number and the value is the peak ADC.
+        '''
+
+        # get the line formed by the input array
+        ref_points = [Point2D(i, pkadcs[i]) for i in range(len(pkadcs))]
+        ref_line, _ = self.get_line_from_points(ref_points)
+
+        diff_sum = []
+        shift_min = -3
+        shift_max = 6
+        for shift in range(shift_min, shift_max):
+            pts = [Point2D(float(p.x)+shift, float(p.y)) for p in self.points]
+            dist_sum = 0
+            for p in pts:
+                dist_sum += ref_line.distance(p)
+            diff_sum.append(dist_sum)
+        best_shift = np.argmin(diff_sum) + shift_min
+        if self.verbose:
+            print('Sum of distances from points to the reference line, shifting from {} to {} in x:\n'.format(shift_min, shift_max-1), diff_sum)
+            print('Best shift:', best_shift)
+        self.shift_peak_id(best_shift)
+
     def shift_peak_id(self, x_shift):
         '''
         This method shifts all peak position assignments to the left or right
@@ -62,6 +141,20 @@ class MPPCLine:
         self.points = [Point2D(i+x_shift, self.peak_adcs[i]) for i in range(len(self.peak_adcs))]
         self.coeff[1] -= self.coeff[0]*x_shift
         self.line = Line2D(Point2D(0, self.coeff[1]), slope=self.coeff[0])
+    
+    def show_spectrum(self, savefpn=None):
+        histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
+        plt.scatter(np.array(bin_edges)[self.peaks], np.array(histy)[self.peaks],
+                    marker=markers.CARETDOWN, color='r', s=20)
+        for i in range(len(self.points)):
+            p = self.points[i]
+            h = histy[self.peaks[i]]
+            plt.text(float(p.y), h, str(int(p.x)))
+        if savefpn:
+            plt.savefig(savefpn)
+        else:
+            plt.show()
+        plt.close()
 
     def voltage_from_filename(self, fn):
         for tmpstr in fn.split('_'):
@@ -161,18 +254,28 @@ def plot_result(lines, p_cent, outfpn):
 if __name__ == '__main__':
     # command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input_filelist', type=str,
+    parser.add_argument('-f', '--input_filelist', type=str,
                         default='infiles.txt')
+    parser.add_argument('-i', '--input_files', type=str,
+                        default=['../../data/root/20201030_165210_mppc_volt59.0_temp22.8.root', '../../data/root/20201030_165731_mppc_volt59.5_temp22.8.root', '../../data/root/20201030_170151_mppc_volt60.0_temp22.8.root', '../../data/root/20201030_170540_mppc_volt60.5_temp22.8.root', '../../data/root/20201030_170925_mppc_volt61.0_temp22.8.root'], nargs='*')
+    # parser.add_argument('-i', '--input_files', type=str,
+    #                     default=['../../data/root/20201030_165210_mppc_volt59.0_temp22.8.root', '../../data/root/20201030_165731_mppc_volt59.5_temp22.8.root', '../../data/root/20201030_170151_mppc_volt60.0_temp22.8.root', '../../data/root/20201030_170540_mppc_volt60.5_temp22.8.root'], nargs='*')
     parser.add_argument('-b', '--board_id', type=int, default=1)
     parser.add_argument('-c', '--channel', type=int, default=8)
+    parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args()
     inflist = args.input_filelist
+    infs = args.input_files
     board_id = args.board_id
     channel = args.channel
+    verbosity = args.verbose
     
     # construct MPPC lines
-    with open(inflist, 'r') as flist:
-        mppc_lines = tuple([MPPCLine(line.rstrip('\n'), board_id, channel) for line in flist])
+    if infs:
+        mppc_lines = tuple([MPPCLine(line.rstrip('\n'), board_id, channel, verbosity) for line in infs])
+    else:
+        with open(inflist, 'r') as flist:
+            mppc_lines = tuple([MPPCLine(line.rstrip('\n'), board_id, channel, verbosity) for line in flist])
     
     # find the best intersection of lines by shifting
     # all but one lines in x with integral distances
