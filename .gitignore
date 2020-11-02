@@ -145,3 +145,6 @@ plots/
 processed_data/
 *.jpg
 *.png
+
+# Source data folder
+FEBDAQMULTx2/data_analysis/data
