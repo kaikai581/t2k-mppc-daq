@@ -21,6 +21,7 @@ import json
 import numpy as np
 import pandas as pd
 import signal
+import statistics
 import zmq
 
 # device API imports
@@ -93,16 +94,16 @@ class Window(QWidget):
         self.puVoltageSwitch.toggled.connect(self.puPowerSwitch)
         self.puChCB = QComboBox()
         self.puChCB.addItems(['all', '1', '2', '3', '4'])
-        self.puChCB.setCurrentIndex(4)
+        self.puChCB.setCurrentIndex(3)
         # self.puChCB.setEnabled(False)
-        self.puVsetEdit = QLineEdit('58')
+        self.puVsetEdit = QLineEdit('60')
         self.puVsetEdit.setValidator(QDoubleValidator(bottom=0, top=60, decimals=10))
         self.puVRbEdit = QLineEdit()
 
         # function generator stars with fg
         self.fgChSel = QComboBox()
         self.fgChSel.addItems(['1', '2', 'all'])
-        self.fgChSel.setCurrentIndex(0)
+        self.fgChSel.setCurrentIndex(2)
         self.fgOutputSwitch = QPushButton(text='Switch On')
         self.fgOutputSwitch.setCheckable(True)
         self.fgOutputSwitch.clicked.connect(self.fgToggleOutput)
@@ -110,7 +111,7 @@ class Window(QWidget):
         self.fgRecallChSel.addItems(['0', '1', '2', '3', '4'])
         # recall waveform when a saved state is selected
         self.fgRecallChSel.activated.connect(self.fgRecallState)
-        self.fgRecallChSel.setCurrentIndex(4)
+        self.fgRecallChSel.setCurrentIndex(2)
         self.fgFreqEdit = QLineEdit('1')
         self.fgFreqEdit.setValidator(QDoubleValidator(bottom=0, decimals=10))
         self.fgFreqBtn = QPushButton(text='Apply')
@@ -547,7 +548,7 @@ class Window(QWidget):
         self.devFunGen.recallWaveform(sel_state)
         freq = float(self.devFunGen.querySetFrequency())/1000.
         self.fgFreqEdit.setText(('{:10.9f}'.format(freq)).strip())
-        sel_ch = int(self.fgChSel.currentText())
+        sel_ch = int(self.fgChSel.currentText()) if self.fgChSel.currentText() != 'all' else 1
         amp = float(self.devFunGen.querySetAmplitude(sel_ch))
         self.fgAmplEdit.setText(('{:10.4f}'.format(amp)).strip())
 
@@ -574,6 +575,8 @@ class Window(QWidget):
                 self.puVoltageSwitch.setChecked(True)
                 par_table['number of events'] = self.editNEvt.text()
                 par_table['parameter scan'] = 'on'
+                par_table['bias_voltage'] = self.puVsetEdit.text()
+                par_table['temperature'] = statistics.mean([self.tsY[sen_it][-1] for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']])
             self.socket.send_string(json.dumps(par_table))
             self.daqReady = False
             self.psQueue = self.psQueue[1:]
@@ -622,6 +625,8 @@ class Window(QWidget):
         packedMsg['dark rate scan']['dac2'] = self.drsDac2From.text()
         packedMsg['dark rate scan']['preamp_gain'] = self.drsEditPreGain.text()
         packedMsg['drs_nevt'] = self.drsEditNEvt.text()
+        packedMsg['bias_voltage'] = self.puVsetEdit.text()
+        packedMsg['temperature'] = statistics.mean([self.tsY[sen_it][-1] for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']])
         print('Slow control sending:', json.dumps(packedMsg))
         self.psQueue = []
         self.psQueue.append(packedMsg)

@@ -602,7 +602,7 @@ void SaveAsDialog()
     // tr->SaveAs(fi.fFilename);
 }
 
-void SaveMetadata(std::string outfpn)
+void SaveMetadata(std::string outfpn, float v_bias, float temper)
 {
     Int_t board;
     Int_t channel;
@@ -610,6 +610,8 @@ void SaveMetadata(std::string outfpn)
     Bool_t isTrigger;
     Int_t preampGain;
     Int_t channelBias;
+    Float_t biasVoltage;
+    Float_t temperature;
 
     TFile f(outfpn.c_str(), "update");
     TTree* tr_meta = new TTree("metadata", "A tree for configuration parameters");
@@ -619,6 +621,8 @@ void SaveMetadata(std::string outfpn)
     tr_meta->Branch("isTrigger", &isTrigger, "isTrigger/O");
     tr_meta->Branch("preampGain", &preampGain, "preampGain/I");
     tr_meta->Branch("channelBias", &channelBias, "channelBias/I");
+    tr_meta->Branch("biasVoltage", &biasVoltage, "biasVoltage/F");
+    tr_meta->Branch("temperature", &temperature, "temperature/F");
 
     // fill the metadata tree
     for(int i = 0; i < t->nclients; i++)
@@ -630,6 +634,8 @@ void SaveMetadata(std::string outfpn)
             isTrigger = fChanEnaTrig[i][j]->IsOn();
             preampGain = fChanGain[i][j]->GetNumber();
             channelBias = fChanBias[i][j]->GetNumber();
+            biasVoltage = v_bias;
+            temperature = temper;
             tr_meta->Fill();
         }
     f.cd();
@@ -642,7 +648,7 @@ void SaveToFile(std::string outfpn)
     tr->SaveAs(outfpn.c_str());
 
     // make a tree to store metadata of the configuration parameters
-    SaveMetadata(outfpn);
+    SaveMetadata(outfpn, -1, -1);
 }
 
 extern "C" {
@@ -2073,6 +2079,8 @@ void ProcessMessage(std::string msg)
     std::vector<int> drsChs;
     int psNEvt = 0;
     int drsNEvt = 0;
+    float biasVoltage = -1;
+    float temperature = -1;
 
     // make sure output directory exists
     gROOT->ProcessLine(".! mkdir -p output_data");
@@ -2134,6 +2142,12 @@ void ProcessMessage(std::string msg)
     //     }
     // }
 
+    // Read the bias voltage and the temperature
+    if(document.HasMember("bias_voltage"))
+        biasVoltage = std::stof(document["bias_voltage"].GetString());
+    if(document.HasMember("temperature"))
+        temperature = document["temperature"].GetFloat();
+
     // get date and time as the file group ID
     TDatime tdt;
     int dateID = tdt.GetDate();
@@ -2160,7 +2174,7 @@ void ProcessMessage(std::string msg)
         // save to disk
         char* outfpn = Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", dateID, timeID, vol, temp);
         tr->SaveAs(outfpn);
-        SaveMetadata(std::string(outfpn));
+        SaveMetadata(std::string(outfpn), biasVoltage, temperature);
 
         // After data taking finishes, signal slow control I am ready.
         const char json_ready[] = " { \"daq status\" : \"ready\" } ";
@@ -2262,7 +2276,7 @@ void ProcessMessage(std::string msg)
                     // save to disk
                     char* outfpn = Form("rate_scan/raw_data/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", dateID, timeID, curFeb, curCh, thr);
                     tr->SaveAs(outfpn);
-                    SaveMetadata(std::string(outfpn));
+                    SaveMetadata(std::string(outfpn), biasVoltage, temperature);
                     // summarize this scan
                     RateScanSummary(std::string(outfpn), dateID, timeID, curFeb, curCh, thr, drsNEvt);
 
