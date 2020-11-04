@@ -561,6 +561,9 @@ class Window(QWidget):
                 a_json = json.loads(recv_str)
                 if 'daq status' in a_json.keys():
                     self.daqReady = True if a_json['daq status'] == 'ready' else False
+                if 'quit scan' in a_json.keys():
+                     if a_json['quit scan'] == 'true':
+                        self.psQueue = []
             except:
                 message = self.msgBox.toPlainText() + '\n{}'.format(recv_str)
                 self.msgBox.setText(message)

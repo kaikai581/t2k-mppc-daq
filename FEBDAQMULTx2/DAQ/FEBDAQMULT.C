@@ -146,6 +146,7 @@ int nboard_detected = 0; // number of boards detected on the internet
 UShort_t thr_vals[nboard]; // variables to store threshold values for each board
 float rate[nboard]; // variables to store trigger rates for each board
 int GUI_VERBOSE = 0; // verbosity level of this GUI app
+bool QuitScan = false; // a flag for quitting a DAQ loop issued by a parameter scan
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
 Double_t peaks[maxpe]; //positions of peaks in ADC counts
@@ -1417,7 +1418,7 @@ void FEBGUI()
     fTextButton682->SetMargins(0,0,0,0);
     fTextButton682->SetWrapLength(-1);
     fTextButton682->Resize(123,22);
-    fTextButton682->SetCommand("RunOn=0; StopDAQ();");
+    fTextButton682->SetCommand("RunOn=0; StopDAQ(); QuitScan=true;");
     fGroupFrame679->AddFrame(fTextButton682, new TGLayoutHints(kLHintsLeft | kLHintsCenterX | kLHintsTop | kLHintsExpandX,0,0,2,2));
 
     TGTextButton *fTextButton788 = new TGTextButton(fGroupFrame679,"Reset Histos");
@@ -2070,6 +2071,10 @@ void RateScanSummary(std::string srcfpn, int dateID, int timeID, int curFeb, int
 
 void ProcessMessage(std::string msg)
 {
+    // Initialize QuitScan such that scan loops are executed with certainty.
+    QuitScan = false;
+
+    // local utility declaration
     Document document;
     document.Parse(msg.c_str());
     // clean up the parameter containers
@@ -2178,7 +2183,13 @@ void ProcessMessage(std::string msg)
 
         // After data taking finishes, signal slow control I am ready.
         const char json_ready[] = " { \"daq status\" : \"ready\" } ";
-        SendMsg2SlowCtrl(json_ready);
+        // Issue quit at request.
+        const char json_quit[] = " { \"daq status\" : \"ready\" , \"quit scan\" : \"true\" } ";
+        // Usually, just send DAQ ready.
+        if(!QuitScan)
+            SendMsg2SlowCtrl(json_ready);
+        else // Otherwise, tell the control app to quit any remaining scan.
+            SendMsg2SlowCtrl(json_quit);
     }
 
 
@@ -2212,6 +2223,8 @@ void ProcessMessage(std::string msg)
         // the outermost for loop to scan through thresholds
         for(float thr = thr_from; thr <= thr_to; thr += thr_step)
         {
+            if(QuitScan) break;
+
             // set up the threshold
             thr_vals[0] = thr;
             thr_vals[1] = thr;
