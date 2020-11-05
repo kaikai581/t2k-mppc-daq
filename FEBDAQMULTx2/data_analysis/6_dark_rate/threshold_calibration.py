@@ -31,11 +31,16 @@ if __name__ == '__main__':
         if len(mppc_line.peaks) > 1:
             mppc_lines.append(mppc_line)
 
+    # prepare the output directory
+    out_dir = os.path.join(os.path.dirname(__file__), 'plots')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
     # mppc_line.show_spectrum()
     for mppc_line in mppc_lines:
         mppc_line.shift_and_match(mapped_peak_adcs)
         # print(mppc_line.get_threshold_from_metadata())
-        mppc_line.show_spectrum(os.path.join(os.path.dirname(__file__), 'plots/dac{}.png'.format(mppc_line.get_threshold_from_metadata())))
+        mppc_line.show_spectrum(os.path.join(out_dir, 'dac{}.png'.format(mppc_line.get_threshold_from_metadata())))
     
     x = [mppc_line.get_threshold_from_metadata() for mppc_line in mppc_lines]
     y = [float(mppc_line.points[0].x) for mppc_line in mppc_lines]
@@ -43,4 +48,4 @@ if __name__ == '__main__':
     plt.ylim(bottom=0)
     plt.xlabel('DAC value')
     plt.ylabel('first peak number')
-    plt.savefig('plots/peak_number_vs_dac.png')
+    plt.savefig(os.path.join(out_dir, 'peak_number_vs_dac.png'))

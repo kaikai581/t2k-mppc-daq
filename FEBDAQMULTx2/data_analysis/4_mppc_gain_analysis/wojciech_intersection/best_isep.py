@@ -93,7 +93,7 @@ class MPPCLine:
         fext = os.path.splitext(self.infpn)[1]
         if fext == '.h5':
             try:
-                df = pd.read_hdf(infpn, key='metadata')
+                df = pd.read_hdf(self.infpn, key='metadata')
             except:
                 print('Error reading metadata from {}'.format(self.infpn))
                 return 0
@@ -146,6 +146,9 @@ class MPPCLine:
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
         plt.scatter(np.array(bin_edges)[self.peaks], np.array(histy)[self.peaks],
                     marker=markers.CARETDOWN, color='r', s=20)
+        threshold = self.get_threshold_from_metadata()
+        if threshold > 0:
+            plt.title('DAC {}'.format(threshold))
         for i in range(len(self.points)):
             p = self.points[i]
             h = histy[self.peaks[i]]
