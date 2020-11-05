@@ -6,8 +6,9 @@ import os
 import uproot
 
 def common_prefix(strings):
-    """ Find the longest string that is a prefix of all the strings.
-    """
+    '''
+    Find the longest string that is a prefix of all the strings.
+    '''
     if not strings:
         return ''
     prefix = strings[0]
@@ -36,12 +37,15 @@ def make_plot_from_raw(flist):
         df_metadata = tr_metadata.pandas.df()
 
         x_dac.append(df_metadata[df_metadata.isTrigger == True]['DAC'].iloc[0])
+    board = df_metadata[df_metadata.isTrigger == True]['board'].iloc[0]
+    channel = df_metadata[df_metadata.isTrigger == True]['channel'].iloc[0]
 
     # plt.plot(x_dac, y_rate, marker='o', markerfacecolor='None', linestyle='None')
     plt.plot(x_dac, y_rate, marker='o', markersize=5)
     plt.ylabel('rate (Hz)')
     plt.xlabel('DAC')
     plt.yscale('log')
+    plt.title('FEB{} ch{}'.format(board, channel))
     plt.grid(axis='both')
 
     # prepare output folder

@@ -18,7 +18,7 @@ import seaborn as sns
 import statistics
 import uproot
 
-def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.7, right_threshold=1.4):
+def find_gain(infpn, df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.7, right_threshold=1.4):
 
     # make the plot of a channel
     chvar = 'chg[{}]'.format(ch)
@@ -206,7 +206,7 @@ def process_all_channels(infpn, print_peak_adcs, prominence, left_threshold, rig
     for feb_num in feb_nums:
         for ch_num in ch_nums:
             ch_name = 'b{}_ch{}'.format(feb_num, ch_num)
-            gain[bias_volt][ch_name] = find_gain(df, feb_num, ch_num, print_peak_adcs, prominence, left_threshold, right_threshold)
+            gain[bias_volt][ch_name] = find_gain(infpn, df, feb_num, ch_num, print_peak_adcs, prominence, left_threshold, right_threshold)
     with open(outfpn, 'w') as outfile:
         json.dump(gain, outfile)
     # find_gain(df, 0, 5, print_peak_adcs)
@@ -262,7 +262,6 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--prominence', type=float, default=250)
     parser.add_argument('--print_peak_adcs', action='store_true')
     args = parser.parse_args()
-    global infpn
     infpn = args.input_files
     global prominence
     prominence = args.prominence
