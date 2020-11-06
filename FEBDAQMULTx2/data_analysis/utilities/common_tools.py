@@ -12,7 +12,7 @@ import sys
 import uproot
 
 class MPPCLine:
-    def __init__(self, infpn, feb_id, ch, prom=300, verbose=False):
+    def __init__(self, infpn, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, verbose=False):
         '''
         The constructor is responsible for finding peak positions given
         a filename and a channel ID.
@@ -66,7 +66,7 @@ class MPPCLine:
 
         # store processed data
         pc = PeakCleanup(list(np.array(bin_edges)[self.peaks]))
-        pc.remove_outlier_by_relative_interval(1.4, 0.7)
+        pc.remove_outlier_by_relative_interval(pc_rth, pc_lth)
         self.peak_adcs = pc.peak_adcs
         if verbose:
             print('Peak ADCs:\n', self.peak_adcs)
