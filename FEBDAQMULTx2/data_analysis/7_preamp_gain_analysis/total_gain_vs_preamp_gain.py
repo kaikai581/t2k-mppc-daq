@@ -16,6 +16,6 @@ if __name__ == "__main__":
     
     # result containers
     mppc_lines = [common_tools.MPPCLine(infpn, args.board, args.channel, prom=50, verbose=True) for infpn in infpns]
-    mppc_lines[0].show_spectrum()
-    mppc_lines[0].show_gain_vs_pe()
-    print(mppc_lines[0].preamp_gain)
+    mppc_lines[0].show_spectrum_and_fit()
+    # mppc_lines[0].show_gain_vs_pe()
+    # print(mppc_lines[0].preamp_gain)

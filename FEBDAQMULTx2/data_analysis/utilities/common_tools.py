@@ -5,7 +5,10 @@ from sympy import Point2D, Line2D
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import pandas as pd
+import seaborn as sns
 import statistics
+import sys
 import uproot
 
 class MPPCLine:
@@ -28,7 +31,6 @@ class MPPCLine:
         elif fext == '.root':
             tr_mppc = uproot.open(infpn)['mppc']
             df = tr_mppc.pandas.df()
-            mac5s = list(df.mac5.unique())
             df['feb_num'] = df['mac5'].apply(lambda x: 0 if x == 85 else 1 if x == 170 else -1)
             if verbose:
                 print('Converted dataframe from ROOT:\n', df)
@@ -151,6 +153,7 @@ class MPPCLine:
         y = [float(p.y) for p in self.points]
         plt.scatter(x, y)
         plt.show()
+        plt.close()
     
     def show_spectrum(self, savefpn=None):
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
@@ -163,6 +166,31 @@ class MPPCLine:
             p = self.points[i]
             h = histy[self.peaks[i]]
             plt.text(float(p.y), h, str(int(p.x)))
+        if savefpn:
+            plt.savefig(savefpn)
+        else:
+            plt.show()
+        plt.close()
+    
+    def show_spectrum_and_fit(self, savefpn=None):
+        _, axs = plt.subplots(nrows=2)
+        histy, bin_edges, _ = axs[0].hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
+        axs[0].scatter(np.array(bin_edges)[self.peaks], np.array(histy)[self.peaks],
+                    marker=markers.CARETDOWN, color='r', s=20)
+        
+        # build the histogram title
+        threshold = self.get_threshold_from_metadata()
+        if threshold > 0:
+            axs[0].set_title('DAC {}'.format(threshold))
+
+        # label peaks
+        for i in range(len(self.points)):
+            p = self.points[i]
+            h = histy[self.peaks[i]]
+            axs[0].text(float(p.y), h, str(int(p.x)))
+        
+        # plot the fitted line
+        axs[1].scatter([float(p.x) for p in self.points], [float(p.y) for p in self.points])
         if savefpn:
             plt.savefig(savefpn)
         else:
