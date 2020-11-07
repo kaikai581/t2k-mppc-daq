@@ -8,6 +8,24 @@ import os
 import pandas as pd
 import sys
 
+def common_prefix(strings):
+    '''
+    Find the longest string that is a prefix of all the strings.
+    '''
+    if not strings:
+        return ''
+    prefix = strings[0]
+    for s in strings:
+        if len(s) < len(prefix):
+            prefix = prefix[:len(s)]
+        if not prefix:
+            return ''
+        for i in range(len(prefix)):
+            if prefix[i] != s[i]:
+                prefix = prefix[:i]
+                break
+    return prefix
+
 def gain_voltage_from_dataframe(df):
     print(df)
     fn = df['filename'].iloc[0]
@@ -19,7 +37,7 @@ def gain_voltage_from_dataframe(df):
     return float(voltage), float(df['gain'].iloc[0])
 
 
-def process_one_channel(infpn, datasets, bnum, cnum, prom=250, lth=0.7, rth=1.4):
+def process_one_channel(infpn, out_dir, datasets, bnum, cnum, prom=250, lth=0.7, rth=1.4):
 
     ch_id = 'b{}_ch{}'.format(bnum, cnum)
     if infpn:
@@ -36,6 +54,9 @@ def process_one_channel(infpn, datasets, bnum, cnum, prom=250, lth=0.7, rth=1.4)
         for ds in datasets:
             # select rows
             df_sel = df[(df['filename'] == ds) & (df['prominence'] == prom) & (df['left_threshold'] == lth) & (df['right_threshold'] == rth) & (df['board'] == bnum) & (df['channel'] == cnum)].reset_index()
+            if len(df_sel) == 0:
+                # print('Cannot find record with filename:prominence:left_threshold:right_threshold:board:channel={}:{}:{}:{}:{}:{}'.format(ds, prom, lth, rth, bnum, cnum))
+                return -1, -1, -1
             x, y = gain_voltage_from_dataframe(df_sel)
             x_vbd.append(x)
             y_vbd.append(y)
@@ -66,14 +87,6 @@ def process_one_channel(infpn, datasets, bnum, cnum, prom=250, lth=0.7, rth=1.4)
                          arrowprops=dict(color='magenta', shrink=0.05), c='b')
     # plt.show()
 
-    # prepare the output folder
-    if infpn:
-        out_dir = os.path.splitext(os.path.basename(infpn))[0]
-    else:
-        out_dir = datasets[0].split('_')[0]
-    out_dir = os.path.join('plots', out_dir)
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
     outfpn = os.path.join(out_dir, '{}.png'.format(ch_id))
     # save the plot
     plt.savefig(outfpn)
@@ -83,10 +96,20 @@ def process_one_channel(infpn, datasets, bnum, cnum, prom=250, lth=0.7, rth=1.4)
     return xcept, coeff[0], residuals / (len(x_vbd) - 2)
 
 def process_all_channels(infpn, ds):
+    print(infpn)
     if ((not infpn) or (not os.path.exists(infpn))) and len(ds) == 0:
         print('Input file {} and datasets specified do not exist. Terminating...'.format(infpn))
         sys.exit(-1)
     
+    # prepare the output folder and file name
+    if infpn:
+        out_dir = os.path.splitext(os.path.basename(infpn))[0]
+    else:
+        out_dir = common_prefix(ds)
+    out_dir = os.path.join('plots', out_dir)
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
     # results containers
     x_vbd = []
     y_vbd = []
@@ -96,8 +119,10 @@ def process_all_channels(infpn, ds):
     # process one channel only
     for bid in range(2):
         for cid in range(32):
+            vbd, total_gain, chi2 = process_one_channel(infpn, out_dir, ds, bid, cid)
+            if chi2 < 0:
+                continue
             x_vbd.append(x_cnt)
-            vbd, total_gain, chi2 = process_one_channel(infpn, ds, bid, cid)
             y_vbd.append(vbd)
             y_totgain.append(total_gain)
             y_chi2.append(chi2)
@@ -124,11 +149,6 @@ def process_all_channels(infpn, ds):
     axes[2].grid(axis='y')
     plt.tight_layout()
     
-    # prepare the output folder and file name
-    out_dir = os.path.splitext(os.path.basename(infpn))[0]
-    out_dir = os.path.join('plots', out_dir)
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
     outfpn = os.path.join(out_dir, 'Vbd_vs_ch.png')
     plt.savefig(outfpn)
     plt.close()

@@ -16,8 +16,9 @@ import os
 import pandas as pd
 import seaborn as sns
 import statistics
+import uproot
 
-def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.7, right_threshold=1.4):
+def find_gain(infpn, df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.7, right_threshold=1.4):
 
     # make the plot of a channel
     chvar = 'chg[{}]'.format(ch)
@@ -133,7 +134,7 @@ def find_gain(df, feb_id, ch, print_peak_adcs, prominence=300, left_threshold=0.
     save_gain_database(infpn, feb_id, ch, prominence, left_threshold, right_threshold, coeff, r2_gof)
 
     # make also simple plots with only peaks and linear fit
-    fig, (ax0, ax1) = plt.subplots(nrows=2)
+    _, (ax0, ax1) = plt.subplots(nrows=2)
     histy, bin_edges, _ = ax0.hist(df_1b[chvar], bins=bins, histtype='step')
     ax0.scatter(np.array(bin_edges)[peaks], np.array(histy)[peaks],
                    marker=markers.CARETDOWN, color='r', s=20)
@@ -165,7 +166,19 @@ def processed_data_directory():
     return out_dir
 
 def process_all_channels(infpn, print_peak_adcs, prominence, left_threshold, right_threshold):
-    df = pd.read_hdf(infpn, key='mppc')
+
+    # get the dataframe either from a .h5 file or a .root file directly
+    fext = os.path.splitext(infpn)[1]
+    if fext == '.h5':
+        df = pd.read_hdf(infpn, key='mppc')
+    elif fext == '.root':
+        tr_mppc = uproot.open(infpn)['mppc']
+        df = tr_mppc.pandas.df()
+        mac5s = list(df.mac5.unique())
+        df['feb_num'] = df['mac5'].apply(lambda x: mac5s.index(x))
+    else:
+        print('File format is neither a hdf5 nor a root.')
+        sys.exit(-1)
     # get all different feb numbers
     feb_nums = list(df.feb_num.value_counts().keys())
     # get channel numbers
@@ -193,7 +206,7 @@ def process_all_channels(infpn, print_peak_adcs, prominence, left_threshold, rig
     for feb_num in feb_nums:
         for ch_num in ch_nums:
             ch_name = 'b{}_ch{}'.format(feb_num, ch_num)
-            gain[bias_volt][ch_name] = find_gain(df, feb_num, ch_num, print_peak_adcs, prominence, left_threshold, right_threshold)
+            gain[bias_volt][ch_name] = find_gain(infpn, df, feb_num, ch_num, print_peak_adcs, prominence, left_threshold, right_threshold)
     with open(outfpn, 'w') as outfile:
         json.dump(gain, outfile)
     # find_gain(df, 0, 5, print_peak_adcs)
@@ -249,7 +262,6 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--prominence', type=float, default=250)
     parser.add_argument('--print_peak_adcs', action='store_true')
     args = parser.parse_args()
-    global infpn
     infpn = args.input_files
     global prominence
     prominence = args.prominence
