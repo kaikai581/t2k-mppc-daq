@@ -1,6 +1,7 @@
 
 from matplotlib import markers
 from scipy.signal import find_peaks
+from scipy.stats import norm, poisson
 from sympy import Point2D, Line2D
 import matplotlib.pyplot as plt
 import numpy as np
@@ -350,3 +351,14 @@ class PeakCleanup:
             outl_idx = self.mad_based_outlier_idx(np.array(self.peak_diffs), thresh=5)
             if outl_idx:
                 self.remove_outlier(outl_idx[-1])
+
+def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, exess, mu):
+    '''
+    This is the multipoisson formula used for fit the MPPC ADC spectrum.
+    Source: http://zeus.phys.uconn.edu/wiki/index.php/Characterizing_SiPMs
+    '''
+    maxpe = 10
+    retval = 0
+    for p in range(maxpe+1):
+        for s in ragne(maxpe+1):
+            retval += poisson(avnpe).pmf(p)*poisson(avnpe*mu).pmf(s)*norm()
