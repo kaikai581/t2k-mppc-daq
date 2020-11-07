@@ -46,9 +46,15 @@ class MPPCLine:
         self.infpn = infpn
         # make the plot of a channel
         self.feb_id = feb_id
+        self.ch = ch
         self.chvar = 'chg[{}]'.format(ch)
         # record the preamp gain
         self.preamp_gain = self.get_preamp_gain()
+        # record the bias voltage
+        self.bias_voltage = self.get_bias_voltage()
+        # record the temperature
+        self.temperature = self.get_temperature()
+
         # select data of the specified board
         self.df_1b = df[df['feb_num'] == feb_id]
         if verbose:
@@ -79,6 +85,18 @@ class MPPCLine:
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
     
+    def get_bias_voltage(self):
+        df = self.df_metadata
+        if not df.empty:
+            df_sel = df[df['isTrigger'] == True]
+            if not df_sel.empty:
+                return df_sel['biasVoltage'].iloc[0]
+        else: # try to get bias voltage from the file name
+            for substr in os.path.basename(self.infpn).split('_'):
+                if 'volt' in substr:
+                    return float(substr.lstrip('volt'))
+        return -1
+
     def get_line_from_points(self, pts):
         # fit a line to the points
         x_try = np.array([p.x for p in pts]).astype(float)
@@ -92,6 +110,18 @@ class MPPCLine:
             df_sel = df[df['isTrigger'] == True]
             if not df_sel.empty:
                 return df_sel['preampGain'].iloc[0]
+        return -1
+    
+    def get_temperature(self):
+        df = self.df_metadata
+        if not df.empty:
+            df_sel = df[(df.board == self.feb_id) & (df.channel == self.ch)]
+            if not df_sel.empty:
+                return df_sel['temperature'].iloc[0]
+        else: # try to get bias voltage from the file name
+            for substr in os.path.basename(self.infpn).split('_'):
+                if 'temp' in substr:
+                    return float(substr.lstrip('temp'))
         return -1
 
     def get_threshold_from_metadata(self):
@@ -188,9 +218,19 @@ class MPPCLine:
             p = self.points[i]
             h = histy[self.peaks[i]]
             axs[0].text(float(p.y), h, str(int(p.x)))
+        # plot decoration
+        axs[0].set_xlabel('ADC')
+        axs[0].set_ylabel('count')
         
         # plot the fitted line
+        xfit = np.linspace(0, len(self.points)-1, 100)
+        yfit = self.coeff[0]*xfit + self.coeff[1]
         axs[1].scatter([float(p.x) for p in self.points], [float(p.y) for p in self.points])
+        axs[1].plot(xfit, yfit, '--g', alpha=.7)
+        axs[1].set_xlabel('PE number')
+        axs[1].set_ylabel('ADC')
+        
+        plt.tight_layout()
         if savefpn:
             plt.savefig(savefpn)
         else:
@@ -202,6 +242,13 @@ class MPPCLine:
             if 'volt' in tmpstr:
                 return float(tmpstr.lstrip('volt'))
         return 0.
+
+class MPPCLines:
+    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, verbose=False):
+        '''
+        Given a set of input root files, construct the group of MPPC lines.
+        '''
+        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, verbose) for infpn in infpns]
 
 class PeakCleanup:
     def __init__(self, peak_adcs):
