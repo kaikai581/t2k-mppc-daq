@@ -3,6 +3,7 @@ from matplotlib import markers
 from scipy.signal import find_peaks
 from scipy.stats import norm, poisson
 from sympy import Point2D, Line2D
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -239,7 +240,7 @@ class MPPCLine:
         plt.close()
 
     def voltage_from_filename(self, fn):
-        for tmpstr in fn.split('_'):
+        for tmpstr in os.path.basename(fn).split('_'):
             if 'volt' in tmpstr:
                 return float(tmpstr.lstrip('volt'))
         return 0.
@@ -356,9 +357,14 @@ def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, exess, mu):
     '''
     This is the multipoisson formula used for fit the MPPC ADC spectrum.
     Source: http://zeus.phys.uconn.edu/wiki/index.php/Characterizing_SiPMs
+    A set of parameters leading to conpicuous peaks is
+    {x,1000,10,10,0.2,3,0.05,0.5} where x is in [0,200]
     '''
     maxpe = 10
     retval = 0
+    q = (x-zero)/gain
     for p in range(maxpe+1):
-        for s in ragne(maxpe+1):
-            retval += poisson(avnpe).pmf(p)*poisson(avnpe*mu).pmf(s)*norm()
+        for s in range(maxpe+1):
+            retval += poisson(avnpe).pmf(p)*poisson(avnpe*mu).pmf(s)*norm.pdf(q, p+s, math.sqrt(noise**2+exess**2*(p+s)))
+    retval *= N
+    return retval
