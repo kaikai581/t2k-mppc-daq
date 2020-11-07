@@ -580,6 +580,10 @@ class Window(QWidget):
                 par_table['parameter scan'] = 'on'
                 par_table['bias_voltage'] = self.puVsetEdit.text()
                 par_table['temperature'] = statistics.mean([self.tsY[sen_it][-1] for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']])
+                if self.fgOutputSwitch.isChecked:
+                    par_table['led_Vpp'] = float(self.fgAmplEdit.text())
+                else:
+                    par_table['led_Vpp'] = -1
             self.socket.send_string(json.dumps(par_table))
             self.daqReady = False
             self.psQueue = self.psQueue[1:]

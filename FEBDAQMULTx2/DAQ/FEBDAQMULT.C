@@ -147,6 +147,8 @@ UShort_t thr_vals[nboard]; // variables to store threshold values for each board
 float rate[nboard]; // variables to store trigger rates for each board
 int GUI_VERBOSE = 0; // verbosity level of this GUI app
 bool QuitScan = false; // a flag for quitting a DAQ loop issued by a parameter scan
+float led_Vpp = -1; // a variable for storing the LED driving voltage
+
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
 Double_t peaks[maxpe]; //positions of peaks in ADC counts
@@ -613,6 +615,7 @@ void SaveMetadata(std::string outfpn, float v_bias, float temper)
     Int_t channelBias;
     Float_t biasVoltage;
     Float_t temperature;
+    Float_t ledVpp;
 
     TFile f(outfpn.c_str(), "update");
     TTree* tr_meta = new TTree("metadata", "A tree for configuration parameters");
@@ -624,6 +627,7 @@ void SaveMetadata(std::string outfpn, float v_bias, float temper)
     tr_meta->Branch("channelBias", &channelBias, "channelBias/I");
     tr_meta->Branch("biasVoltage", &biasVoltage, "biasVoltage/F");
     tr_meta->Branch("temperature", &temperature, "temperature/F");
+    tr_meta->Branch("ledVpp", &ledVpp, "ledVpp/F");
 
     // fill the metadata tree
     for(int i = 0; i < t->nclients; i++)
@@ -637,6 +641,7 @@ void SaveMetadata(std::string outfpn, float v_bias, float temper)
             channelBias = fChanBias[i][j]->GetNumber();
             biasVoltage = v_bias;
             temperature = temper;
+            ledVpp = led_Vpp;
             tr_meta->Fill();
         }
     f.cd();
@@ -2152,6 +2157,8 @@ void ProcessMessage(std::string msg)
         biasVoltage = std::stof(document["bias_voltage"].GetString());
     if(document.HasMember("temperature"))
         temperature = document["temperature"].GetFloat();
+    if(document.HasMember("led_Vpp"))
+        led_Vpp = document["led_Vpp"].GetFloat();
 
     // get date and time as the file group ID
     TDatime tdt;
