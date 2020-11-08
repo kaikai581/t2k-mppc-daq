@@ -15,14 +15,17 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--channel', type=int, default=24)
     args = parser.parse_args()
     infpns = args.input_files
-    
+
+    # x0 = [1.92146209e+04, 2.70747057e+01, 2.61399618e+02, 2.49084992e-01, 2.67437806e+00, 2.19167730e+00, 3.88837355e-06]
+    # x0 = [9.94192213e+04, 9.30903167e+00, 2.22499208e+02, 4.58364234e-04, 2.25968104e+00, 3.02765250e+00, 4.56089578e+00]
+    x = np.linspace(0,800,800,False)
+    f = np.vectorize(common_tools.multipoisson_fit_function)
+    x0 = [8.17238186e+03, 7.04937982e+01, 1.71778575e+02, 2.67215945e-03, 1.70559594e+00, 3.92486266e-01, 2.52090931e-01]
+    y = f(x,*x0)
+    plt.plot(x,y,c='r')
+    plt.show()
+
     # result containers
     # mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=200)
     # print(mppc_group.mppc_lines[0].bias_voltage, mppc_group.mppc_lines[0].temperature)
-    # mppc_group.mppc_lines[0].show_spectrum_and_fit()
-
-    x = np.linspace(0,200,200,False)
-    f = np.vectorize(common_tools.multipoisson_fit_function)
-    y = f(x,1000,10,10,0.2,3,0.05,0.5)
-    plt.plot(x,y,c='r')
-    plt.show()
+    # mppc_group.mppc_lines[0].fit_multipoisson()

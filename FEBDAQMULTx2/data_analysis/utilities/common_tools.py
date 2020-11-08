@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import scipy.optimize as optimization
 import seaborn as sns
 import statistics
 import sys
@@ -87,6 +88,41 @@ class MPPCLine:
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
     
+    def fit_multipoisson(self):
+        histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
+        plt.clf()
+        bin_centers = [(bin_edges[i+1]+bin_edges[i])/2 for i in range(len(bin_edges)-1)]
+        # plt.plot(bin_centers, histy)
+        # plt.show()
+        plt.close()
+
+        # continuous zero removal from the end of the data
+        zero_y_idx = []
+        for i in range(len(histy)):
+            idx = len(histy)-1-i
+            if histy[idx] == 0.:
+                zero_y_idx.append(idx)
+            else: break
+        xdata = [bin_centers[i] for i in range(len(bin_centers)) if i not in zero_y_idx]
+        ydata = [histy[i] for i in range(len(histy)) if i not in zero_y_idx]
+        # plt.plot(xdata, ydata)
+        # plt.show()
+
+        # initial parameter guess
+        # (N, gain, zero, noise, avnpe, exess, mu)
+        N = len(self.df_1b)
+        gain = self.coeff[0]
+        zero = float(self.points[0].y) if len(self.points) > 0 else 0
+        noise = gain/100.
+        avnpe = 6
+        exess = gain/100.
+        mu = .1
+        p_init = np.array([N, gain, zero, noise, avnpe, exess, mu])
+
+        # fit and show the results
+        # print(optimization.curve_fit(multipoisson_fit_function, bin_centers, histy, p_init))
+        print(optimization.curve_fit(multipoisson_fit_function, xdata, ydata, p_init, bounds=([0,0,-np.inf,0,0,0,0],[np.inf,np.inf,np.inf,np.inf,np.inf,np.inf,np.inf])))
+
     def get_bias_voltage(self):
         df = self.df_metadata
         if not df.empty:
@@ -360,7 +396,7 @@ def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, exess, mu):
     A set of parameters leading to conpicuous peaks is
     {x,1000,10,10,0.2,3,0.05,0.5} where x is in [0,200]
     '''
-    maxpe = 10
+    maxpe = 13
     retval = 0
     q = (x-zero)/gain
     for p in range(maxpe+1):
