@@ -109,19 +109,20 @@ class MPPCLine:
         # plt.show()
 
         # initial parameter guess
-        # (N, gain, zero, noise, avnpe, exess, mu)
+        # (N, gain, zero, noise, avnpe, excess, mu)
         N = len(self.df_1b)
         gain = self.coeff[0]
         zero = float(self.points[0].y) if len(self.points) > 0 else 0
         noise = gain/100.
         avnpe = 6
-        exess = gain/100.
+        excess = gain/100.
         mu = .1
-        p_init = np.array([N, gain, zero, noise, avnpe, exess, mu])
+        p_init = np.array([N, gain, zero, noise, avnpe, excess, mu])
 
         # fit and show the results
         # print(optimization.curve_fit(multipoisson_fit_function, bin_centers, histy, p_init))
-        print(optimization.curve_fit(multipoisson_fit_function, xdata, ydata, p_init, bounds=([0,0,-np.inf,0,0,0,0],[np.inf,np.inf,np.inf,np.inf,np.inf,np.inf,np.inf])))
+        # print(optimization.curve_fit(multipoisson_fit_function, xdata, ydata, p_init, bounds=([0,0,-np.inf,0,0,0,0],[np.inf,np.inf,np.inf,np.inf,np.inf,np.inf,np.inf])))
+        print(optimization.curve_fit(gaussian_sum_fit_func, xdata, ydata, p_init))
 
     def get_bias_voltage(self):
         df = self.df_metadata
@@ -389,7 +390,7 @@ class PeakCleanup:
             if outl_idx:
                 self.remove_outlier(outl_idx[-1])
 
-def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, exess, mu):
+def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, excess, mu):
     '''
     This is the multipoisson formula used for fit the MPPC ADC spectrum.
     Source: http://zeus.phys.uconn.edu/wiki/index.php/Characterizing_SiPMs
@@ -401,6 +402,25 @@ def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, exess, mu):
     q = (x-zero)/gain
     for p in range(maxpe+1):
         for s in range(maxpe+1):
-            retval += poisson(avnpe).pmf(p)*poisson(avnpe*mu).pmf(s)*norm.pdf(q, p+s, math.sqrt(noise**2+exess**2*(p+s)))
+            retval += poisson(avnpe).pmf(p)*poisson(avnpe*mu).pmf(s)*norm.pdf(q, p+s, math.sqrt(noise**2+excess**2*(p+s)))
+    retval *= N
+    return retval
+
+def gaussian_sum_fit_func(x, N, gain, zero, noise, avnpe, excess, xtalk):
+    '''
+    This is the gaussian sum formula used for fit the MPPC ADC spectrum.
+    Source: CAEN DT5702 reference DAQ
+    '''
+    maxpe = 10
+    retval = 0
+    peaks = []
+    peaksint = []
+    for i in range(maxpe):
+        peaks.append(zero+gain*i)
+        peaksint.append(poisson(avnpe).pmf(i))
+        if i > 1:
+            peaksint[i] = peaksint[i] + peaksint[i-1] * xtalk
+    for i in range(maxpe):
+        retval += peaksint[i]*(norm.pdf(x, peaks[i], math.sqrt(noise**2+i*excess)))
     retval *= N
     return retval
