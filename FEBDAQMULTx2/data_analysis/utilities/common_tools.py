@@ -57,6 +57,11 @@ class MPPCLine:
         self.bias_voltage = self.get_bias_voltage()
         # record the temperature
         self.temperature = self.get_temperature()
+        # record the threshold
+        self.threshold = self.get_threshold_from_metadata()
+        # record the fit parameters from a function fit to the ADC spectrum
+        self.fitp = None
+        self.fitpcov = None
 
         # select data of the specified board
         self.df_1b = df[df['feb_num'] == feb_id]
@@ -88,13 +93,13 @@ class MPPCLine:
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
     
-    def fit_multipoisson(self):
-        histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
-        plt.clf()
+    def fit_adc_spectrum(self, func, save_fpn=None):
+        # notify the user what is being done
+        print('Fitting', os.path.basename(self.infpn))
+
+        # make the ADC spectrum
+        histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step', label='data')
         bin_centers = [(bin_edges[i+1]+bin_edges[i])/2 for i in range(len(bin_edges)-1)]
-        # plt.plot(bin_centers, histy)
-        # plt.show()
-        plt.close()
 
         # continuous zero removal from the end of the data
         zero_y_idx = []
@@ -105,24 +110,39 @@ class MPPCLine:
             else: break
         xdata = [bin_centers[i] for i in range(len(bin_centers)) if i not in zero_y_idx]
         ydata = [histy[i] for i in range(len(histy)) if i not in zero_y_idx]
-        # plt.plot(xdata, ydata)
-        # plt.show()
 
         # initial parameter guess
-        # (N, gain, zero, noise, avnpe, excess, mu)
+        # (N, gain, zero, noise, avnpe, excess, xtalk_frac)
         N = len(self.df_1b)
         gain = self.coeff[0]
         zero = float(self.points[0].y) if len(self.points) > 0 else 0
         noise = gain/100.
         avnpe = 6
         excess = gain/100.
-        mu = .1
-        p_init = np.array([N, gain, zero, noise, avnpe, excess, mu])
+        xtalk_frac = .1
+        p_init = np.array([N, gain, zero, noise, avnpe, excess, xtalk_frac])
 
         # fit and show the results
-        # print(optimization.curve_fit(multipoisson_fit_function, bin_centers, histy, p_init))
-        # print(optimization.curve_fit(multipoisson_fit_function, xdata, ydata, p_init, bounds=([0,0,-np.inf,0,0,0,0],[np.inf,np.inf,np.inf,np.inf,np.inf,np.inf,np.inf])))
-        print(optimization.curve_fit(gaussian_sum_fit_func, xdata, ydata, p_init))
+        # print(optimization.curve_fit(func, xdata, ydata, p_init, bounds=([0,0,-np.inf,0,0,0,0],[np.inf,np.inf,np.inf,np.inf,np.inf,np.inf,np.inf])))
+        try:
+            self.fitp, self.fitpcov = optimization.curve_fit(func, xdata, ydata, p_init)
+        except RuntimeError as e:
+            plt.close()
+            return -1
+        yfit = func(xdata, *self.fitp)
+        plt.plot(xdata, yfit, label='fit curve')
+        plt.xlabel('ADC')
+        plt.ylabel('count')
+        plt.title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()))
+        plt.legend()
+        plt.annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(self.fitp[1],math.sqrt(self.fitpcov[1][1])), xy=(0.5, 0.5), xycoords='axes fraction')
+        if save_fpn:
+            easy_save_to(plt, save_fpn)
+        else:
+            plt.show()
+        plt.close()
+
+        return 1
 
     def get_bias_voltage(self):
         df = self.df_metadata
@@ -143,6 +163,12 @@ class MPPCLine:
         coeff = np.polyfit(x_try, y_try, 1)
         return Line2D(Point2D(0, coeff[1]), slope=coeff[0]), coeff
     
+    def get_parameter_string(self):
+        '''
+        Return a string of physical parameters for use as plots' title.
+        '''
+        return r'V$_{{bias}}$:{}V preamp gain:{} temperature:{:.2f}°C DAC:{}'.format(self.bias_voltage, self.preamp_gain, self.temperature, self.threshold)
+
     def get_preamp_gain(self):
         df = self.df_metadata.copy()
         if not df.empty:
@@ -288,6 +314,104 @@ class MPPCLines:
         Given a set of input root files, construct the group of MPPC lines.
         '''
         self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, verbose) for infpn in infpns]
+    
+    def fit_total_gain_vs_bias_voltage(self, outpn=None):
+        '''
+        This method takes a set of measurements with various bias voltages,
+        plots total gain vs. bias voltage, fits a line, and takes the
+        x intercept as the breakdown voltage.
+        '''
+        x = []
+        y = []
+        yerr = []
+        for line in self.mppc_lines:
+            if (not line.fitp) or (not line.fitpcov):
+                outfpn = None
+                if outpn:
+                    outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
+                    outfpn = os.path.join(outpn, outfn)
+                if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
+                    x.append(line.bias_voltage)
+                    y.append(line.fitp[1])
+                    yerr.append(math.sqrt(line.fitpcov[1][1]))
+        plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
+        plt.xlabel('bias voltage (V)')
+        plt.ylabel('total gain (ADC/PE)')
+        par_str = r'preamp gain:{} temperature:{:.2f}°C DAC:{}'.format(self.mppc_lines[0].preamp_gain, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold)
+        plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str))
+
+        # make a linear fit to extract the breakdown voltage
+        slope = (y[1]-y[0])/(x[1]-x[0]) if len(y) >= 2 else 10
+        intercept = 50
+        p_init = np.array([slope, intercept])
+        try:
+            self.fitp, self.fitpcov = optimization.curve_fit(breakdown_voltage_linear_function, x, y, p_init, sigma=yerr)
+        except RuntimeError as e:
+            plt.close()
+            return -1
+        vbd = self.fitp[1]
+        vmax = x[-1]*1.01
+        vmin = vbd*.95
+        xgain = np.linspace(vbd, vmax, 101)
+        ygain = breakdown_voltage_linear_function(xgain, *self.fitp)
+        vbd_err = math.sqrt(self.fitpcov[1][1])
+        # plot the breakdown voltage line
+        plt.xlim(left=vmin, right=vmax)
+        plt.plot(xgain, ygain)
+        # mark the x-intercept
+        arrow_ylen = (ygain[-1]-ygain[0])*.2
+        arrow_xlen = (xgain[-1]-xgain[0])*.2
+        xtext = vbd-1.5*arrow_xlen if vbd-1.5*arrow_xlen > vmin else vmin*1.005
+        plt.annotate(r'{:.2f}$\pm${:.3f}V'.format(vbd, vbd_err), xy=(vbd, 0),
+                     xytext=(xtext, arrow_ylen),
+                     arrowprops=dict(color='magenta', shrink=0.05), c='b')
+
+        # save results to files
+        if outpn:
+            substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
+            del substrs[1]
+            outfn = '_'.join(substrs) + '_b{}c{}.png'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch)
+            outfpn = os.path.join(outpn, outfn)
+            easy_save_to(plt, outfpn)
+        else:
+            plt.show()
+        plt.close()
+
+        return 1
+    
+    def fit_total_gain_vs_preamp_gain(self, outpn=None):
+        '''
+        This method takes a set of measurements with various preamp gains,
+        plots total gain vs. preamp gain, fits a line, and takes the
+        x intercept as the breakdown voltage.
+        '''
+        x = []
+        y = []
+        yerr = []
+        for line in self.mppc_lines:
+            if (not line.fitp) or (not line.fitpcov):
+                outfpn = None
+                if outpn:
+                    outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(self.feb_id, self.ch)
+                    outfpn = os.path.join(outpn, outfn)
+                if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
+                    x.append(line.preamp_gain)
+                    y.append(line.fitp[1])
+                    yerr.append(math.sqrt(line.fitpcov[1][1]))
+        plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
+        plt.xlabel('preamp gain')
+        plt.ylabel('total gain')
+        plt.title('FEB{} ch{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch))
+        if outpn:
+            substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
+            del substrs[1]
+            outfn = '_'.join(substrs) + '.png'
+            outfpn = os.path.join(outpn, outfn)
+            easy_save_to(plt, outfpn)
+        else:
+            plt.show()
+        plt.close()
+
 
 class PeakCleanup:
     def __init__(self, peak_adcs):
@@ -390,6 +514,24 @@ class PeakCleanup:
             if outl_idx:
                 self.remove_outlier(outl_idx[-1])
 
+def breakdown_voltage_linear_function(x, slope, vbd):
+    '''
+    Instead of the blind y = m * x + b, write the breakdown voltage explicitely
+    in the equation for easy error estimate. That is,
+    y = slope * (x - vbd)
+    '''
+    return slope*(x-vbd)
+
+def easy_save_to(thisplt, outfpn):
+    '''
+    Make saveing file effortless.
+    outfpn is a full pathname.
+    '''
+    out_dir = os.path.dirname(outfpn)
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    thisplt.savefig(outfpn)
+
 def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, excess, mu):
     '''
     This is the multipoisson formula used for fit the MPPC ADC spectrum.
@@ -411,7 +553,7 @@ def gaussian_sum_fit_func(x, N, gain, zero, noise, avnpe, excess, xtalk):
     This is the gaussian sum formula used for fit the MPPC ADC spectrum.
     Source: CAEN DT5702 reference DAQ
     '''
-    maxpe = 10
+    maxpe = 15
     retval = 0
     peaks = []
     peaksint = []
@@ -421,6 +563,22 @@ def gaussian_sum_fit_func(x, N, gain, zero, noise, avnpe, excess, xtalk):
         if i > 1:
             peaksint[i] = peaksint[i] + peaksint[i-1] * xtalk
     for i in range(maxpe):
-        retval += peaksint[i]*(norm.pdf(x, peaks[i], math.sqrt(noise**2+i*excess)))
+        retval += peaksint[i]*(norm.pdf(x, peaks[i], math.sqrt(noise**2+i*excess**2)))
     retval *= N
     return retval
+
+def longestSubstringFinder(string1, string2):
+    '''
+    Source: https://stackoverflow.com/questions/18715688/find-common-substring-between-two-strings
+    '''
+    answer = ''
+    len1, len2 = len(string1), len(string2)
+    for i in range(len1):
+        match = ''
+        for j in range(len2):
+            if (i + j < len1 and string1[i + j] == string2[j]):
+                match += string2[j]
+            else:
+                if (len(match) > len(answer)): answer = match
+                match = ''
+    return answer
