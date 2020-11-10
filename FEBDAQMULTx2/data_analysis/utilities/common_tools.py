@@ -93,6 +93,19 @@ class MPPCLine:
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
     
+    def adc_spectrum(self, adcmin = 0, adcmax = 4100, savepn=None):
+        histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
+        plt.xlim(left=adcmin, right=adcmax)
+        plt.title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()))
+        plt.xlabel('ADC')
+        plt.ylabel('Count')
+        if savepn:
+            outfn = os.path.basename(self.infpn).rstrip('.root')+'_b{}c{}.png'.format(self.feb_id, self.ch)
+            easy_save_to(plt, os.path.join(savepn, outfn))
+        else:
+            plt.show()
+        plt.close()
+
     def fit_adc_spectrum(self, func, save_fpn=None):
         # notify the user what is being done
         print('Fitting', os.path.basename(self.infpn))
@@ -172,7 +185,7 @@ class MPPCLine:
     def get_preamp_gain(self):
         df = self.df_metadata.copy()
         if not df.empty:
-            df_sel = df[df['isTrigger'] == True]
+            df_sel = df[(df['isTrigger'] == True) & (df.board == self.feb_id)]
             if not df_sel.empty:
                 return df_sel['preampGain'].iloc[0]
         return -1

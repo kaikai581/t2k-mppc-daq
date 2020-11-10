@@ -27,5 +27,5 @@ if __name__ == "__main__":
 
     # result containers
     mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=200)
-    # mppc_group.fit_total_gain_vs_preamp_gain(os.path.join(os.path.dirname(__file__), 'plots'))
-    mppc_group.fit_total_gain_vs_bias_voltage(os.path.join(os.path.dirname(__file__), 'plots'))
+    # mppc_group.fit_total_gain_vs_bias_voltage(os.path.join(os.path.dirname(__file__), 'plots'))
+    mppc_group.mppc_lines[0].adc_spectrum(adcmax=2000, savepn=os.path.join(os.path.dirname(__file__), 'plots'))

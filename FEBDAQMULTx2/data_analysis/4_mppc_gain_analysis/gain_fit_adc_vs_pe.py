@@ -10,10 +10,12 @@ from operator import itemgetter
 from peak_cleanup import PeakCleanup
 import argparse
 import json
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import scipy.optimize as optimization
 import seaborn as sns
 import statistics
 import uproot
@@ -90,7 +92,8 @@ def find_gain(infpn, df, feb_id, ch, print_peak_adcs, prominence=300, left_thres
     bins_adc_diff = np.linspace(0, len(peak_adcs)-1, len(peak_adcs)).astype(int)
     x_try = np.array(bins_adc_diff)
     y_try = np.array(peak_adcs)
-    coeff = np.polyfit(x_try, y_try, 1)
+    # coeff, covmat = np.polyfit(x_try, y_try, 1, cov=True)
+    coeff, covmat = optimization.curve_fit(my_linear_fun, x_try, y_try, [70, -250])
     fitx = np.linspace(0, x_try[-1], 100)
     fity = coeff[0]*fitx + coeff[1]
     ax_fit_line = plt.subplot2grid((2, 3), (1, 2))
@@ -131,7 +134,7 @@ def find_gain(infpn, df, feb_id, ch, print_peak_adcs, prominence=300, left_thres
     plt.close()
 
     # save to database
-    save_gain_database(infpn, feb_id, ch, prominence, left_threshold, right_threshold, coeff, r2_gof)
+    save_gain_database(infpn, feb_id, ch, prominence, left_threshold, right_threshold, coeff, r2_gof, math.sqrt(covmat[0][0]))
 
     # make also simple plots with only peaks and linear fit
     _, (ax0, ax1) = plt.subplots(nrows=2)
@@ -145,6 +148,7 @@ def find_gain(infpn, df, feb_id, ch, print_peak_adcs, prominence=300, left_thres
     ax1.set_ylim(bottom=0, top=max(peak_adcs_orig)*1.05)
     ax1.set_xlabel('PE id')
     ax1.set_ylabel('ADC value')
+    ax1.annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(coeff[0],math.sqrt(covmat[0][0])), xy=(0.5, 0.5), xycoords='axes fraction')
     outfdname = os.path.join(os.path.dirname(__file__), infn)
     outfdname = os.path.join('plots', os.path.splitext(outfdname)[0]+'_prom{}_lth{}_rth{}'.format(prominence, left_threshold, right_threshold), 'single_channel/simple')
     if not os.path.exists(outfdname):
@@ -158,6 +162,9 @@ def find_gain(infpn, df, feb_id, ch, print_peak_adcs, prominence=300, left_thres
 
     # return the slope (gain)
     return coeff[0], r2_gof
+
+def my_linear_fun(x, m, b):
+    return m*x+b
 
 def processed_data_directory():
     out_dir = os.path.join(os.path.dirname(__file__), 'processed_data')
@@ -213,7 +220,7 @@ def process_all_channels(infpn, print_peak_adcs, prominence, left_threshold, rig
     # find_gain(df, 0, 6, print_peak_adcs)
     # find_gain(df, 0, 7, print_peak_adcs)
 
-def save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, r2_gof):
+def save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, r2_gof, gain_err):
     # determine the output file pathname
     out_dir = processed_data_directory()
     outfn = 'gain_database.csv'
@@ -237,6 +244,7 @@ def save_gain_database(infpn, feb_id, ch, prominence, left_th, right_th, coeff, 
     new_data['left_threshold'] = left_th
     new_data['right_threshold'] = right_th
     new_data['gain'] = coeff[0]
+    new_data['gain_err'] = gain_err
     new_data['r2'] = r2_gof
 
     # make a new dataframe out of the new data record
