@@ -37,8 +37,11 @@ class MPPCLine:
             df['feb_num'] = df['mac5'].apply(lambda x: 0 if x == 85 else 1 if x == 170 else -1)
             if verbose:
                 print('Converted dataframe from ROOT:\n', df)
-            tr_metadata = uproot.open(infpn)['metadata']
-            self.df_metadata = tr_metadata.pandas.df()
+            try:
+                tr_metadata = uproot.open(infpn)['metadata']
+                self.df_metadata = tr_metadata.pandas.df()
+            except:
+                self.df_metadata = pd.Dataframe()
         else:
             print('File format is neither a hdf5 nor a root.')
             sys.exit(-1)
@@ -55,10 +58,12 @@ class MPPCLine:
         self.preamp_gain = self.get_preamp_gain()
         # record the bias voltage
         self.bias_voltage = self.get_bias_voltage()
+        # record the bias regulation on FEB
+        self.bias_regulation = self.get_bias_regulation()
         # record the temperature
         self.temperature = self.get_temperature()
         # record the threshold
-        self.threshold = self.get_threshold_from_metadata()
+        self.threshold = self.get_threshold()
         # record the fit parameters from a function fit to the ADC spectrum
         self.fitp = None
         self.fitpcov = None
@@ -162,9 +167,21 @@ class MPPCLine:
 
         return 1
 
+    def get_bias_regulation(self):
+        if not self.df_metadata.empty:
+            df = self.df_metadata
+            df_sel = df[(df['isTrigger'] == True) & (df['board'] == self.feb_id)]
+            if not df_sel.empty:
+                return df_sel['channelBias'].iloc[0]
+        else: # try to get bias voltage from the file name
+            for substr in os.path.basename(self.infpn.rstrip('.root')).split('_'):
+                if 'biasregulation' in substr:
+                    return int(substr.lstrip('biasregulation'))
+        return -1
+
     def get_bias_voltage(self):
-        df = self.df_metadata
-        if not df.empty:
+        if not self.df_metadata.empty:
+            df = self.df_metadata
             df_sel = df[df['isTrigger'] == True]
             if not df_sel.empty:
                 return df_sel['biasVoltage'].iloc[0]
@@ -185,19 +202,24 @@ class MPPCLine:
         '''
         Return a string of physical parameters for use as plots' title.
         '''
-        return r'V$_{{bias}}$:{}V preamp gain:{} temperature:{:.2f}°C DAC:{}'.format(self.bias_voltage, self.preamp_gain, self.temperature, self.threshold)
+        return r'V$_{{bias}}$:{}V preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.bias_voltage, self.preamp_gain, self.temperature, self.threshold, self.bias_regulation)
 
     def get_preamp_gain(self):
-        df = self.df_metadata.copy()
-        if not df.empty:
-            df_sel = df[(df['isTrigger'] == True) & (df.board == self.feb_id)]
-            if not df_sel.empty:
-                return df_sel['preampGain'].iloc[0]
+        if not self.df_metadata.empty:
+            df = self.df_metadata.copy()
+            if not df.empty:
+                df_sel = df[(df['isTrigger'] == True) & (df.board == self.feb_id)]
+                if not df_sel.empty:
+                    return df_sel['preampGain'].iloc[0]
+        else:
+            for substr in self.infpn.split('_'):
+                if 'preamp' in substr:
+                    return float(substr.lstrip('preamp'))
         return -1
     
     def get_temperature(self):
-        df = self.df_metadata
-        if not df.empty:
+        if not self.df_metadata.empty:
+            df = self.df_metadata
             df_sel = df[(df.board == self.feb_id) & (df.channel == self.ch)]
             if not df_sel.empty:
                 return df_sel['temperature'].iloc[0]
@@ -207,22 +229,27 @@ class MPPCLine:
                     return float(substr.lstrip('temp'))
         return -1
 
-    def get_threshold_from_metadata(self):
-        # get the dataframe either from a .h5 file or a .root file directly
-        fext = os.path.splitext(self.infpn)[1]
-        if fext == '.h5':
-            try:
-                df = pd.read_hdf(self.infpn, key='metadata')
-            except:
-                print('Error reading metadata from {}'.format(self.infpn))
-                return 0
-        elif fext == '.root':
-            tr_mppc = uproot.open(self.infpn)['metadata']
-            df = tr_mppc.pandas.df()
-        df_selch = df[df['isTrigger'] == True]
+    def get_threshold(self):
+        if not self.df_metadata.empty:
+            # get the dataframe either from a .h5 file or a .root file directly
+            fext = os.path.splitext(self.infpn)[1]
+            if fext == '.h5':
+                try:
+                    df = pd.read_hdf(self.infpn, key='metadata')
+                except:
+                    print('Error reading metadata from {}'.format(self.infpn))
+                    return 0
+            elif fext == '.root':
+                tr_mppc = uproot.open(self.infpn)['metadata']
+                df = tr_mppc.pandas.df()
+            df_selch = df[df['isTrigger'] == True]
 
-        if len(df_selch) >= 1:
-            return df_selch['DAC'].iloc[0]
+            if len(df_selch) >= 1:
+                return df_selch['DAC'].iloc[0]
+        else: # try to get threshold from file name
+            for substr in os.path.basename(self.infpn).split('_'):
+                if 'thr' in substr:
+                    return substr.lstrip('thr')
         
         return -1
 
@@ -272,7 +299,7 @@ class MPPCLine:
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
         plt.scatter(np.array(bin_edges)[self.peaks], np.array(histy)[self.peaks],
                     marker=markers.CARETDOWN, color='r', s=20)
-        threshold = self.get_threshold_from_metadata()
+        threshold = self.get_threshold()
         if threshold > 0:
             plt.title('DAC {}'.format(threshold))
         for i in range(len(self.points)):
@@ -292,7 +319,7 @@ class MPPCLine:
                     marker=markers.CARETDOWN, color='r', s=20)
         
         # build the histogram title
-        axs[0].set_title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()))
+        axs[0].set_title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()), fontsize=10)
 
         # label peaks
         for i in range(len(self.points)):
@@ -337,7 +364,7 @@ class MPPCLines:
         '''
         self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, verbose) for infpn in infpns]
     
-    def fit_total_gain_vs_bias_voltage(self, outpn=None):
+    def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True):
         '''
         This method takes a set of measurements with various bias voltages,
         plots total gain vs. bias voltage, fits a line, and takes the
@@ -352,15 +379,22 @@ class MPPCLines:
                 if outpn:
                     outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
                     outfpn = os.path.join(outpn, outfn)
-                if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
+                if use_fit_fun:
+                    if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
+                        x.append(line.bias_voltage)
+                        y.append(line.fitp[1])
+                        yerr.append(math.sqrt(line.fitpcov[1][1]))
+                else:
                     x.append(line.bias_voltage)
-                    y.append(line.fitp[1])
-                    yerr.append(math.sqrt(line.fitpcov[1][1]))
+                    y.append(line.gainfitp[0])
+                    yerr.append(math.sqrt(line.gainfitpcov[0][0]))
+                    # store intermediate plots
+                    line.show_spectrum_and_fit(outfpn)
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
         plt.xlabel('bias voltage (V)')
         plt.ylabel('total gain (ADC/PE)')
-        par_str = r'preamp gain:{} temperature:{:.2f}°C DAC:{}'.format(self.mppc_lines[0].preamp_gain, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold)
-        plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str))
+        par_str = r'preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.mppc_lines[0].preamp_gain, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold, self.mppc_lines[0].bias_regulation)
+        plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str), fontsize=10)
 
         # make a linear fit to extract the breakdown voltage
         slope = (y[1]-y[0])/(x[1]-x[0]) if len(y) >= 2 else 10

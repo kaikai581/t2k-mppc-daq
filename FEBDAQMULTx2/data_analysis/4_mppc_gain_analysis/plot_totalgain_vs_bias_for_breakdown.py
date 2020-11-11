@@ -17,4 +17,4 @@ if __name__ == "__main__":
 
     # result containers
     mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=200)
-    mppc_group.fit_total_gain_vs_bias_voltage(args.output_path)
+    mppc_group.fit_total_gain_vs_bias_voltage(args.output_path, False)
