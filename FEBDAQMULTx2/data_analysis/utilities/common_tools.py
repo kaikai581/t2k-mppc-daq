@@ -92,6 +92,11 @@ class MPPCLine:
 
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
+
+        # do linear fit with scipy's curve_fit for uncertainties in total gain
+        x_try = [float(p.x) for p in self.points]
+        y_try = [float(p.y) for p in self.points]
+        self.gainfitp, self.gainfitpcov = optimization.curve_fit(my_linear_fun, x_try, y_try, [70, -250])
     
     def adc_spectrum(self, adcmin = 0, adcmax = 4100, savepn=None):
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
@@ -287,9 +292,7 @@ class MPPCLine:
                     marker=markers.CARETDOWN, color='r', s=20)
         
         # build the histogram title
-        threshold = self.get_threshold_from_metadata()
-        if threshold > 0:
-            axs[0].set_title('DAC {}'.format(threshold))
+        axs[0].set_title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()))
 
         # label peaks
         for i in range(len(self.points)):
@@ -300,17 +303,23 @@ class MPPCLine:
         axs[0].set_xlabel('ADC')
         axs[0].set_ylabel('count')
         
-        # plot the fitted line
+        # plot the default fitted line
         xfit = np.linspace(0, len(self.points)-1, 100)
         yfit = self.coeff[0]*xfit + self.coeff[1]
         axs[1].scatter([float(p.x) for p in self.points], [float(p.y) for p in self.points])
         axs[1].plot(xfit, yfit, '--g', alpha=.7)
         axs[1].set_xlabel('PE number')
         axs[1].set_ylabel('ADC')
+
+        axs[1].annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(self.gainfitp[0],math.sqrt(self.gainfitpcov[0][0])), xy=(0.52, 0.4), xycoords='axes fraction')
+        # compare curve_fit results to polyfit
+        if self.verbose:
+            print(self.coeff[0], fitp[0])
+            print(self.coeff[1], fitp[1])
         
         plt.tight_layout()
         if savefpn:
-            plt.savefig(savefpn)
+            easy_save_to(plt, savefpn)
         else:
             plt.show()
         plt.close()
@@ -370,6 +379,7 @@ class MPPCLines:
         vbd_err = math.sqrt(self.fitpcov[1][1])
         # plot the breakdown voltage line
         plt.xlim(left=vmin, right=vmax)
+        plt.ylim(bottom=0)
         plt.plot(xgain, ygain)
         # mark the x-intercept
         arrow_ylen = (ygain[-1]-ygain[0])*.2
@@ -392,29 +402,38 @@ class MPPCLines:
 
         return 1
     
-    def fit_total_gain_vs_preamp_gain(self, outpn=None):
+    def fit_total_gain_vs_preamp_gain(self, outpn=None, use_fit_fun=True):
         '''
         This method takes a set of measurements with various preamp gains,
         plots total gain vs. preamp gain, fits a line, and takes the
         x intercept as the breakdown voltage.
+        If use_fit_fun is set, use the 7-parameter function to get gain. Otherwise, use the simple line fit.
         '''
         x = []
         y = []
         yerr = []
         for line in self.mppc_lines:
-            if (not line.fitp) or (not line.fitpcov):
-                outfpn = None
-                if outpn:
-                    outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(self.feb_id, self.ch)
-                    outfpn = os.path.join(outpn, outfn)
-                if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
-                    x.append(line.preamp_gain)
-                    y.append(line.fitp[1])
-                    yerr.append(math.sqrt(line.fitpcov[1][1]))
+            outfpn = None
+            if outpn:
+                outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
+                outfpn = os.path.join(outpn, outfn)
+            if use_fit_fun:
+                if (not line.fitp) or (not line.fitpcov):
+                    if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
+                        x.append(line.preamp_gain)
+                        y.append(line.fitp[1])
+                        yerr.append(math.sqrt(line.fitpcov[1][1]))
+            else:
+                x.append(line.preamp_gain)
+                y.append(line.gainfitp[0])
+                yerr.append(math.sqrt(line.gainfitpcov[0][0]))
+                # store intermediate plots
+                line.show_spectrum_and_fit(outfpn)
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
         plt.xlabel('preamp gain')
         plt.ylabel('total gain')
-        plt.title('FEB{} ch{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch))
+        par_str = r'V$_{{bias}}$:{}V temperature:{:.2f}°C DAC:{}'.format(self.mppc_lines[0].bias_voltage, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold)
+        plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str))
         if outpn:
             substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
             del substrs[1]
@@ -560,6 +579,12 @@ def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, excess, mu):
             retval += poisson(avnpe).pmf(p)*poisson(avnpe*mu).pmf(s)*norm.pdf(q, p+s, math.sqrt(noise**2+excess**2*(p+s)))
     retval *= N
     return retval
+
+def my_linear_fun(x, m, b):
+    '''
+    The most mundane function form of a linear function.
+    '''
+    return m*x+b
 
 def gaussian_sum_fit_func(x, N, gain, zero, noise, avnpe, excess, xtalk):
     '''
