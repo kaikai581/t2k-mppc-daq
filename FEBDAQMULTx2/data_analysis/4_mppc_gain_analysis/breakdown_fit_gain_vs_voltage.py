@@ -2,10 +2,12 @@
 
 import argparse
 import json
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import scipy.optimize as optimization
 import sys
 
 def common_prefix(strings):
@@ -36,6 +38,8 @@ def gain_voltage_from_dataframe(df):
     print(voltage, df['gain'].iloc[[0]][0])
     return float(voltage), float(df['gain'].iloc[0])
 
+def my_linear_fun(x, m, b):
+    return m*(x-b)
 
 def process_one_channel(infpn, out_dir, datasets, bnum, cnum, prom=250, lth=0.7, rth=1.4):
 
@@ -50,6 +54,7 @@ def process_one_channel(infpn, out_dir, datasets, bnum, cnum, prom=250, lth=0.7,
     else:
         x_vbd = []
         y_vbd = []
+        yerr = []
         df = pd.read_csv('processed_data/gain_database.csv')
         for ds in datasets:
             # select rows
@@ -60,12 +65,14 @@ def process_one_channel(infpn, out_dir, datasets, bnum, cnum, prom=250, lth=0.7,
             x, y = gain_voltage_from_dataframe(df_sel)
             x_vbd.append(x)
             y_vbd.append(y)
+            yerr.append(df_sel['gain_err'].iloc[0])
             print('Working on {}...'.format(ds))
         x_vbd = np.array(x_vbd)
         y_vbd = np.array(y_vbd)
 
     # make the linear plot
     coeff, residuals, _, _, _ = np.polyfit(x_vbd, y_vbd, 1, full=True)
+    coeff2, covmat = optimization.curve_fit(my_linear_fun, x_vbd, y_vbd, [70, 50], sigma=yerr)
     xmax = max(x_vbd)*1.05
     fitx = np.linspace(0, xmax, 100)
     fity = coeff[0]*fitx + coeff[1]
@@ -83,7 +90,7 @@ def process_one_channel(infpn, out_dir, datasets, bnum, cnum, prom=250, lth=0.7,
     xcept = -coeff[1]/coeff[0]
     arrow_ylen = (ax_fit_line.get_ylim()[1]-ax_fit_line.get_ylim()[0])*.2
     arrow_xlen = (ax_fit_line.get_xlim()[1]-ax_fit_line.get_xlim()[0])*.2
-    ax_fit_line.annotate('{:.2f}V'.format(xcept), xy=(xcept, 0), xytext=(xcept-arrow_xlen, arrow_ylen),
+    ax_fit_line.annotate(r'{:.2f}$\pm${:.2f}V'.format(xcept, math.sqrt(covmat[1][1])), xy=(xcept, 0), xytext=(xcept-arrow_xlen, arrow_ylen),
                          arrowprops=dict(color='magenta', shrink=0.05), c='b')
     # plt.show()
 

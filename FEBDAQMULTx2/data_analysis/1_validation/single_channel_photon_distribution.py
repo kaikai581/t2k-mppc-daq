@@ -82,6 +82,8 @@ def single_channel_plot(df, feb_id, ch):
     outfig_pn = os.path.join(outfdname, 'bd{}ch{}.png'.format(feb_id, ch))
     print('Saving output to {}'.format(outfig_pn))
     plt.title('board {} channel {}'.format(feb_id, ch))
+    plt.ylabel('Count')
+    plt.xlabel('ADC')
     plt.savefig(outfig_pn)
 
 def main():

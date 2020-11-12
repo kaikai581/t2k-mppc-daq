@@ -1,11 +1,14 @@
 
 from matplotlib import markers
 from scipy.signal import find_peaks
+from scipy.stats import norm, poisson
 from sympy import Point2D, Line2D
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import scipy.optimize as optimization
 import seaborn as sns
 import statistics
 import sys
@@ -34,8 +37,11 @@ class MPPCLine:
             df['feb_num'] = df['mac5'].apply(lambda x: 0 if x == 85 else 1 if x == 170 else -1)
             if verbose:
                 print('Converted dataframe from ROOT:\n', df)
-            tr_metadata = uproot.open(infpn)['metadata']
-            self.df_metadata = tr_metadata.pandas.df()
+            try:
+                tr_metadata = uproot.open(infpn)['metadata']
+                self.df_metadata = tr_metadata.pandas.df()
+            except:
+                self.df_metadata = pd.Dataframe()
         else:
             print('File format is neither a hdf5 nor a root.')
             sys.exit(-1)
@@ -46,9 +52,22 @@ class MPPCLine:
         self.infpn = infpn
         # make the plot of a channel
         self.feb_id = feb_id
+        self.ch = ch
         self.chvar = 'chg[{}]'.format(ch)
         # record the preamp gain
         self.preamp_gain = self.get_preamp_gain()
+        # record the bias voltage
+        self.bias_voltage = self.get_bias_voltage()
+        # record the bias regulation on FEB
+        self.bias_regulation = self.get_bias_regulation()
+        # record the temperature
+        self.temperature = self.get_temperature()
+        # record the threshold
+        self.threshold = self.get_threshold()
+        # record the fit parameters from a function fit to the ADC spectrum
+        self.fitp = None
+        self.fitpcov = None
+
         # select data of the specified board
         self.df_1b = df[df['feb_num'] == feb_id]
         if verbose:
@@ -78,7 +97,100 @@ class MPPCLine:
 
         # bias voltage
         self.voltage = self.voltage_from_filename(infpn)
+
+        # do linear fit with scipy's curve_fit for uncertainties in total gain
+        x_try = [float(p.x) for p in self.points]
+        y_try = [float(p.y) for p in self.points]
+        self.gainfitp, self.gainfitpcov = optimization.curve_fit(my_linear_fun, x_try, y_try, [70, -250])
     
+    def adc_spectrum(self, adcmin = 0, adcmax = 4100, savepn=None):
+        histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
+        plt.xlim(left=adcmin, right=adcmax)
+        plt.title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()))
+        plt.xlabel('ADC')
+        plt.ylabel('Count')
+        if savepn:
+            outfn = os.path.basename(self.infpn).rstrip('.root')+'_b{}c{}.png'.format(self.feb_id, self.ch)
+            easy_save_to(plt, os.path.join(savepn, outfn))
+        else:
+            plt.show()
+        plt.close()
+
+    def fit_adc_spectrum(self, func, save_fpn=None):
+        # notify the user what is being done
+        print('Fitting', os.path.basename(self.infpn))
+
+        # make the ADC spectrum
+        histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step', label='data')
+        bin_centers = [(bin_edges[i+1]+bin_edges[i])/2 for i in range(len(bin_edges)-1)]
+
+        # continuous zero removal from the end of the data
+        zero_y_idx = []
+        for i in range(len(histy)):
+            idx = len(histy)-1-i
+            if histy[idx] == 0.:
+                zero_y_idx.append(idx)
+            else: break
+        xdata = [bin_centers[i] for i in range(len(bin_centers)) if i not in zero_y_idx]
+        ydata = [histy[i] for i in range(len(histy)) if i not in zero_y_idx]
+
+        # initial parameter guess
+        # (N, gain, zero, noise, avnpe, excess, xtalk_frac)
+        N = len(self.df_1b)
+        gain = self.coeff[0]
+        zero = float(self.points[0].y) if len(self.points) > 0 else 0
+        noise = gain/100.
+        avnpe = 6
+        excess = gain/100.
+        xtalk_frac = .1
+        p_init = np.array([N, gain, zero, noise, avnpe, excess, xtalk_frac])
+
+        # fit and show the results
+        # print(optimization.curve_fit(func, xdata, ydata, p_init, bounds=([0,0,-np.inf,0,0,0,0],[np.inf,np.inf,np.inf,np.inf,np.inf,np.inf,np.inf])))
+        try:
+            self.fitp, self.fitpcov = optimization.curve_fit(func, xdata, ydata, p_init)
+        except RuntimeError as e:
+            plt.close()
+            return -1
+        yfit = func(xdata, *self.fitp)
+        plt.plot(xdata, yfit, label='fit curve')
+        plt.xlabel('ADC')
+        plt.ylabel('count')
+        plt.title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()))
+        plt.legend()
+        plt.annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(self.fitp[1],math.sqrt(self.fitpcov[1][1])), xy=(0.5, 0.5), xycoords='axes fraction')
+        if save_fpn:
+            easy_save_to(plt, save_fpn)
+        else:
+            plt.show()
+        plt.close()
+
+        return 1
+
+    def get_bias_regulation(self):
+        if not self.df_metadata.empty:
+            df = self.df_metadata
+            df_sel = df[(df['isTrigger'] == True) & (df['board'] == self.feb_id)]
+            if not df_sel.empty:
+                return df_sel['channelBias'].iloc[0]
+        else: # try to get bias voltage from the file name
+            for substr in os.path.basename(self.infpn.rstrip('.root')).split('_'):
+                if 'biasregulation' in substr:
+                    return int(substr.lstrip('biasregulation'))
+        return -1
+
+    def get_bias_voltage(self):
+        if not self.df_metadata.empty:
+            df = self.df_metadata
+            df_sel = df[df['isTrigger'] == True]
+            if not df_sel.empty:
+                return df_sel['biasVoltage'].iloc[0]
+        else: # try to get bias voltage from the file name
+            for substr in os.path.basename(self.infpn).split('_'):
+                if 'volt' in substr:
+                    return float(substr.lstrip('volt'))
+        return -1
+
     def get_line_from_points(self, pts):
         # fit a line to the points
         x_try = np.array([p.x for p in pts]).astype(float)
@@ -86,30 +198,58 @@ class MPPCLine:
         coeff = np.polyfit(x_try, y_try, 1)
         return Line2D(Point2D(0, coeff[1]), slope=coeff[0]), coeff
     
+    def get_parameter_string(self):
+        '''
+        Return a string of physical parameters for use as plots' title.
+        '''
+        return r'V$_{{bias}}$:{}V preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.bias_voltage, self.preamp_gain, self.temperature, self.threshold, self.bias_regulation)
+
     def get_preamp_gain(self):
-        df = self.df_metadata.copy()
-        if not df.empty:
-            df_sel = df[df['isTrigger'] == True]
+        if not self.df_metadata.empty:
+            df = self.df_metadata.copy()
+            if not df.empty:
+                df_sel = df[(df['isTrigger'] == True) & (df.board == self.feb_id)]
+                if not df_sel.empty:
+                    return df_sel['preampGain'].iloc[0]
+        else:
+            for substr in self.infpn.split('_'):
+                if 'preamp' in substr:
+                    return float(substr.lstrip('preamp'))
+        return -1
+    
+    def get_temperature(self):
+        if not self.df_metadata.empty:
+            df = self.df_metadata
+            df_sel = df[(df.board == self.feb_id) & (df.channel == self.ch)]
             if not df_sel.empty:
-                return df_sel['preampGain'].iloc[0]
+                return df_sel['temperature'].iloc[0]
+        else: # try to get bias voltage from the file name
+            for substr in os.path.basename(self.infpn).split('_'):
+                if 'temp' in substr:
+                    return float(substr.lstrip('temp'))
         return -1
 
-    def get_threshold_from_metadata(self):
-        # get the dataframe either from a .h5 file or a .root file directly
-        fext = os.path.splitext(self.infpn)[1]
-        if fext == '.h5':
-            try:
-                df = pd.read_hdf(self.infpn, key='metadata')
-            except:
-                print('Error reading metadata from {}'.format(self.infpn))
-                return 0
-        elif fext == '.root':
-            tr_mppc = uproot.open(self.infpn)['metadata']
-            df = tr_mppc.pandas.df()
-        df_selch = df[df['isTrigger'] == True]
+    def get_threshold(self):
+        if not self.df_metadata.empty:
+            # get the dataframe either from a .h5 file or a .root file directly
+            fext = os.path.splitext(self.infpn)[1]
+            if fext == '.h5':
+                try:
+                    df = pd.read_hdf(self.infpn, key='metadata')
+                except:
+                    print('Error reading metadata from {}'.format(self.infpn))
+                    return 0
+            elif fext == '.root':
+                tr_mppc = uproot.open(self.infpn)['metadata']
+                df = tr_mppc.pandas.df()
+            df_selch = df[df['isTrigger'] == True]
 
-        if len(df_selch) >= 1:
-            return df_selch['DAC'].iloc[0]
+            if len(df_selch) >= 1:
+                return df_selch['DAC'].iloc[0]
+        else: # try to get threshold from file name
+            for substr in os.path.basename(self.infpn).split('_'):
+                if 'thr' in substr:
+                    return substr.lstrip('thr')
         
         return -1
 
@@ -159,7 +299,7 @@ class MPPCLine:
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
         plt.scatter(np.array(bin_edges)[self.peaks], np.array(histy)[self.peaks],
                     marker=markers.CARETDOWN, color='r', s=20)
-        threshold = self.get_threshold_from_metadata()
+        threshold = self.get_threshold()
         if threshold > 0:
             plt.title('DAC {}'.format(threshold))
         for i in range(len(self.points)):
@@ -179,29 +319,165 @@ class MPPCLine:
                     marker=markers.CARETDOWN, color='r', s=20)
         
         # build the histogram title
-        threshold = self.get_threshold_from_metadata()
-        if threshold > 0:
-            axs[0].set_title('DAC {}'.format(threshold))
+        axs[0].set_title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()), fontsize=10)
 
         # label peaks
         for i in range(len(self.points)):
             p = self.points[i]
             h = histy[self.peaks[i]]
             axs[0].text(float(p.y), h, str(int(p.x)))
+        # plot decoration
+        axs[0].set_xlabel('ADC')
+        axs[0].set_ylabel('count')
         
-        # plot the fitted line
+        # plot the default fitted line
+        xfit = np.linspace(0, len(self.points)-1, 100)
+        yfit = self.coeff[0]*xfit + self.coeff[1]
         axs[1].scatter([float(p.x) for p in self.points], [float(p.y) for p in self.points])
+        axs[1].plot(xfit, yfit, '--g', alpha=.7)
+        axs[1].set_xlabel('PE number')
+        axs[1].set_ylabel('ADC')
+
+        axs[1].annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(self.gainfitp[0],math.sqrt(self.gainfitpcov[0][0])), xy=(0.52, 0.4), xycoords='axes fraction')
+        # compare curve_fit results to polyfit
+        if self.verbose:
+            print(self.coeff[0], fitp[0])
+            print(self.coeff[1], fitp[1])
+        
+        plt.tight_layout()
         if savefpn:
-            plt.savefig(savefpn)
+            easy_save_to(plt, savefpn)
         else:
             plt.show()
         plt.close()
 
     def voltage_from_filename(self, fn):
-        for tmpstr in fn.split('_'):
+        for tmpstr in os.path.basename(fn).split('_'):
             if 'volt' in tmpstr:
                 return float(tmpstr.lstrip('volt'))
         return 0.
+
+class MPPCLines:
+    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, verbose=False):
+        '''
+        Given a set of input root files, construct the group of MPPC lines.
+        '''
+        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, verbose) for infpn in infpns]
+    
+    def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True):
+        '''
+        This method takes a set of measurements with various bias voltages,
+        plots total gain vs. bias voltage, fits a line, and takes the
+        x intercept as the breakdown voltage.
+        '''
+        x = []
+        y = []
+        yerr = []
+        for line in self.mppc_lines:
+            if (not line.fitp) or (not line.fitpcov):
+                outfpn = None
+                if outpn:
+                    outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
+                    outfpn = os.path.join(outpn, outfn)
+                if use_fit_fun:
+                    if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
+                        x.append(line.bias_voltage)
+                        y.append(line.fitp[1])
+                        yerr.append(math.sqrt(line.fitpcov[1][1]))
+                else:
+                    x.append(line.bias_voltage)
+                    y.append(line.gainfitp[0])
+                    yerr.append(math.sqrt(line.gainfitpcov[0][0]))
+                    # store intermediate plots
+                    line.show_spectrum_and_fit(outfpn)
+        plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
+        plt.xlabel('bias voltage (V)')
+        plt.ylabel('total gain (ADC/PE)')
+        par_str = r'preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.mppc_lines[0].preamp_gain, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold, self.mppc_lines[0].bias_regulation)
+        plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str), fontsize=10)
+
+        # make a linear fit to extract the breakdown voltage
+        slope = (y[1]-y[0])/(x[1]-x[0]) if len(y) >= 2 else 10
+        intercept = 50
+        p_init = np.array([slope, intercept])
+        try:
+            self.fitp, self.fitpcov = optimization.curve_fit(breakdown_voltage_linear_function, x, y, p_init, sigma=yerr)
+        except RuntimeError as e:
+            plt.close()
+            return -1
+        vbd = self.fitp[1]
+        vmax = x[-1]*1.01
+        vmin = vbd*.95
+        xgain = np.linspace(vbd, vmax, 101)
+        ygain = breakdown_voltage_linear_function(xgain, *self.fitp)
+        vbd_err = math.sqrt(self.fitpcov[1][1])
+        # plot the breakdown voltage line
+        plt.xlim(left=vmin, right=vmax)
+        plt.ylim(bottom=0)
+        plt.plot(xgain, ygain)
+        # mark the x-intercept
+        arrow_ylen = (ygain[-1]-ygain[0])*.2
+        arrow_xlen = (xgain[-1]-xgain[0])*.2
+        xtext = vbd-1.5*arrow_xlen if vbd-1.5*arrow_xlen > vmin else vmin*1.005
+        plt.annotate(r'{:.2f}$\pm${:.3f}V'.format(vbd, vbd_err), xy=(vbd, 0),
+                     xytext=(xtext, arrow_ylen),
+                     arrowprops=dict(color='magenta', shrink=0.05), c='b')
+
+        # save results to files
+        if outpn:
+            substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
+            del substrs[1]
+            outfn = '_'.join(substrs) + '_b{}c{}.png'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch)
+            outfpn = os.path.join(outpn, outfn)
+            easy_save_to(plt, outfpn)
+        else:
+            plt.show()
+        plt.close()
+
+        return 1
+    
+    def fit_total_gain_vs_preamp_gain(self, outpn=None, use_fit_fun=True):
+        '''
+        This method takes a set of measurements with various preamp gains,
+        plots total gain vs. preamp gain, fits a line, and takes the
+        x intercept as the breakdown voltage.
+        If use_fit_fun is set, use the 7-parameter function to get gain. Otherwise, use the simple line fit.
+        '''
+        x = []
+        y = []
+        yerr = []
+        for line in self.mppc_lines:
+            outfpn = None
+            if outpn:
+                outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
+                outfpn = os.path.join(outpn, outfn)
+            if use_fit_fun:
+                if (not line.fitp) or (not line.fitpcov):
+                    if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
+                        x.append(line.preamp_gain)
+                        y.append(line.fitp[1])
+                        yerr.append(math.sqrt(line.fitpcov[1][1]))
+            else:
+                x.append(line.preamp_gain)
+                y.append(line.gainfitp[0])
+                yerr.append(math.sqrt(line.gainfitpcov[0][0]))
+                # store intermediate plots
+                line.show_spectrum_and_fit(outfpn)
+        plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
+        plt.xlabel('preamp gain')
+        plt.ylabel('total gain')
+        par_str = r'V$_{{bias}}$:{}V temperature:{:.2f}°C DAC:{}'.format(self.mppc_lines[0].bias_voltage, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold)
+        plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str))
+        if outpn:
+            substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
+            del substrs[1]
+            outfn = '_'.join(substrs) + '.png'
+            outfpn = os.path.join(outpn, outfn)
+            easy_save_to(plt, outfpn)
+        else:
+            plt.show()
+        plt.close()
+
 
 class PeakCleanup:
     def __init__(self, peak_adcs):
@@ -303,3 +579,78 @@ class PeakCleanup:
             outl_idx = self.mad_based_outlier_idx(np.array(self.peak_diffs), thresh=5)
             if outl_idx:
                 self.remove_outlier(outl_idx[-1])
+
+def breakdown_voltage_linear_function(x, slope, vbd):
+    '''
+    Instead of the blind y = m * x + b, write the breakdown voltage explicitely
+    in the equation for easy error estimate. That is,
+    y = slope * (x - vbd)
+    '''
+    return slope*(x-vbd)
+
+def easy_save_to(thisplt, outfpn):
+    '''
+    Make saveing file effortless.
+    outfpn is a full pathname.
+    '''
+    out_dir = os.path.dirname(outfpn)
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    thisplt.savefig(outfpn)
+
+def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, excess, mu):
+    '''
+    This is the multipoisson formula used for fit the MPPC ADC spectrum.
+    Source: http://zeus.phys.uconn.edu/wiki/index.php/Characterizing_SiPMs
+    A set of parameters leading to conpicuous peaks is
+    {x,1000,10,10,0.2,3,0.05,0.5} where x is in [0,200]
+    '''
+    maxpe = 13
+    retval = 0
+    q = (x-zero)/gain
+    for p in range(maxpe+1):
+        for s in range(maxpe+1):
+            retval += poisson(avnpe).pmf(p)*poisson(avnpe*mu).pmf(s)*norm.pdf(q, p+s, math.sqrt(noise**2+excess**2*(p+s)))
+    retval *= N
+    return retval
+
+def my_linear_fun(x, m, b):
+    '''
+    The most mundane function form of a linear function.
+    '''
+    return m*x+b
+
+def gaussian_sum_fit_func(x, N, gain, zero, noise, avnpe, excess, xtalk):
+    '''
+    This is the gaussian sum formula used for fit the MPPC ADC spectrum.
+    Source: CAEN DT5702 reference DAQ
+    '''
+    maxpe = 15
+    retval = 0
+    peaks = []
+    peaksint = []
+    for i in range(maxpe):
+        peaks.append(zero+gain*i)
+        peaksint.append(poisson(avnpe).pmf(i))
+        if i > 1:
+            peaksint[i] = peaksint[i] + peaksint[i-1] * xtalk
+    for i in range(maxpe):
+        retval += peaksint[i]*(norm.pdf(x, peaks[i], math.sqrt(noise**2+i*excess**2)))
+    retval *= N
+    return retval
+
+def longestSubstringFinder(string1, string2):
+    '''
+    Source: https://stackoverflow.com/questions/18715688/find-common-substring-between-two-strings
+    '''
+    answer = ''
+    len1, len2 = len(string1), len(string2)
+    for i in range(len1):
+        match = ''
+        for j in range(len2):
+            if (i + j < len1 and string1[i + j] == string2[j]):
+                match += string2[j]
+            else:
+                if (len(match) > len(answer)): answer = match
+                match = ''
+    return answer
