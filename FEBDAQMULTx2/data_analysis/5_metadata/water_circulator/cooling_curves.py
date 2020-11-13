@@ -63,7 +63,7 @@ def two_axes_plot(df_therm, df_water, more_info=False):
         df_therm_last = df_therm[['T0','T1','T2','T3','T4']].iloc[-1].tolist()
         mean_temp = statistics.mean(df_therm_last)
         spread = max(df_therm_last)-min(df_therm_last)
-        axs[0].annotate('steady state\naverage:{:.2f}℃\nspread:{:.2f}℃'.format(mean_temp, spread), xy=(0.6, 0.5), xycoords='axes fraction')
+        axs[0].annotate('steady state\naverage:{:.2f}℃\n$T_{{max}}-T_{{min}}$:{:.2f}℃'.format(mean_temp, spread), xy=(0.6, 0.5), xycoords='axes fraction')
         axs[1].annotate('steady state\nsetpoint readback\n{:.2f}℃'.format(df_water['Internal Temperature'].iloc[-1]), xy=(0.6, 0.5), xycoords='axes fraction')
 
     # save to file
