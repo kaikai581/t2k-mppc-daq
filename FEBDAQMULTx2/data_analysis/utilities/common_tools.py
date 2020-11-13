@@ -41,7 +41,7 @@ class MPPCLine:
                 tr_metadata = uproot.open(infpn)['metadata']
                 self.df_metadata = tr_metadata.pandas.df()
             except:
-                self.df_metadata = pd.Dataframe()
+                self.df_metadata = pd.DataFrame()
         else:
             print('File format is neither a hdf5 nor a root.')
             sys.exit(-1)
@@ -176,7 +176,8 @@ class MPPCLine:
         else: # try to get bias voltage from the file name
             for substr in os.path.basename(self.infpn.rstrip('.root')).split('_'):
                 if 'biasregulation' in substr:
-                    return int(substr.lstrip('biasregulation'))
+                    pos = substr.rfind('biasregulation')
+                    return int(substr[pos+len('biasregulation'):])
         return -1
 
     def get_bias_voltage(self):
@@ -224,7 +225,7 @@ class MPPCLine:
             if not df_sel.empty:
                 return df_sel['temperature'].iloc[0]
         else: # try to get bias voltage from the file name
-            for substr in os.path.basename(self.infpn).split('_'):
+            for substr in os.path.basename(self.infpn.rstrip('.root')).split('_'):
                 if 'temp' in substr:
                     return float(substr.lstrip('temp'))
         return -1
@@ -312,7 +313,7 @@ class MPPCLine:
             plt.show()
         plt.close()
     
-    def show_spectrum_and_fit(self, savefpn=None):
+    def show_spectrum_and_fit(self, savepn=None, savefn=None):
         _, axs = plt.subplots(nrows=2)
         histy, bin_edges, _ = axs[0].hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
         axs[0].scatter(np.array(bin_edges)[self.peaks], np.array(histy)[self.peaks],
@@ -345,8 +346,11 @@ class MPPCLine:
             print(self.coeff[1], fitp[1])
         
         plt.tight_layout()
-        if savefpn:
-            easy_save_to(plt, savefpn)
+        if savepn:
+            if not savefn:
+                savefn = os.path.basename(self.infpn.replace('.root', '.png'))
+            outfpn = os.path.join(savepn, savefn)
+            easy_save_to(plt, outfpn)
         else:
             plt.show()
         plt.close()
@@ -378,7 +382,6 @@ class MPPCLines:
                 outfpn = None
                 if outpn:
                     outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
-                    outfpn = os.path.join(outpn, outfn)
                 if use_fit_fun:
                     if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
                         x.append(line.bias_voltage)
@@ -389,7 +392,7 @@ class MPPCLines:
                     y.append(line.gainfitp[0])
                     yerr.append(math.sqrt(line.gainfitpcov[0][0]))
                     # store intermediate plots
-                    line.show_spectrum_and_fit(outfpn)
+                    line.show_spectrum_and_fit(outpn, outfn)
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
         plt.xlabel('bias voltage (V)')
         plt.ylabel('total gain (ADC/PE)')
@@ -450,7 +453,6 @@ class MPPCLines:
             outfpn = None
             if outpn:
                 outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
-                outfpn = os.path.join(outpn, outfn)
             if use_fit_fun:
                 if (not line.fitp) or (not line.fitpcov):
                     if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
@@ -462,7 +464,7 @@ class MPPCLines:
                 y.append(line.gainfitp[0])
                 yerr.append(math.sqrt(line.gainfitpcov[0][0]))
                 # store intermediate plots
-                line.show_spectrum_and_fit(outfpn)
+                line.show_spectrum_and_fit(outpn, outfn)
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
         plt.xlabel('preamp gain')
         plt.ylabel('total gain')
