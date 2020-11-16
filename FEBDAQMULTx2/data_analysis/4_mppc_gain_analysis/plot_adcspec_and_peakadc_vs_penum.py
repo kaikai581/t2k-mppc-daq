@@ -11,10 +11,11 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--input_files', type=str, nargs='*')
     parser.add_argument('-b', '--board', type=int, default=0)
     parser.add_argument('-c', '--channel', type=int, default=24)
+    parser.add_argument('--output_path', type=str, default=os.path.join(os.path.dirname(__file__), 'plots'))
     args = parser.parse_args()
     infpns = args.input_files
 
     # result containers
     mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=200)
     for line in mppc_group.mppc_lines:
-        line.show_spectrum_and_fit()
+        line.show_spectrum_and_fit(args.output_path)
