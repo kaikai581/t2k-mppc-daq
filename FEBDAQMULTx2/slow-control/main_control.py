@@ -595,7 +595,7 @@ class Window(QWidget):
         # if button is checked
         if self.puVoltageSwitch.isChecked(): 
             # voltage safeguard
-            vol_uplim = 62
+            vol_uplim = 66
             Vset = float(self.puVsetEdit.text())
             if Vset > vol_uplim:
                 print('Input voltage {} V is too high!'.format(vol_uplim))
