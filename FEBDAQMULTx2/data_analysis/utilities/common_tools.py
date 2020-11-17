@@ -15,7 +15,7 @@ import sys
 import uproot
 
 class MPPCLine:
-    def __init__(self, infpn, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, verbose=False):
+    def __init__(self, infpn, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False):
         '''
         The constructor is responsible for finding peak positions given
         a filename and a channel ID.
@@ -56,8 +56,10 @@ class MPPCLine:
         self.chvar = 'chg[{}]'.format(ch)
         # record the preamp gain
         self.preamp_gain = self.get_preamp_gain()
+        # record the voltage offset in case Vset is not Vbias
+        self.voltage_offset = voltage_offset
         # record the bias voltage
-        self.bias_voltage = self.get_bias_voltage()
+        self.bias_voltage = self.get_bias_voltage() + voltage_offset
         # record the bias regulation on FEB
         self.bias_regulation = self.get_bias_regulation()
         # record the temperature
@@ -203,7 +205,9 @@ class MPPCLine:
         '''
         Return a string of physical parameters for use as plots' title.
         '''
-        return r'V$_{{bias}}$:{}V preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.bias_voltage, self.preamp_gain, self.temperature, self.threshold, self.bias_regulation)
+        if self.voltage_offset != 0:
+            return r'V$_{{bias}}$:{:.2f}V preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.bias_voltage, self.preamp_gain, self.temperature, self.threshold, self.bias_regulation)
+        return r'V$_{{set}}$:{:.2f}V preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.bias_voltage+self.voltage_offset, self.preamp_gain, self.temperature, self.threshold, self.bias_regulation)
 
     def get_preamp_gain(self):
         if not self.df_metadata.empty:
@@ -348,7 +352,7 @@ class MPPCLine:
         plt.tight_layout()
         if savepn:
             if not savefn:
-                savefn = os.path.basename(self.infpn.replace('.root', '.png'))
+                savefn = os.path.basename(self.infpn.replace('.root', 'voffset{}.png'.format(self.voltage_offset)))
             outfpn = os.path.join(savepn, savefn)
             easy_save_to(plt, outfpn)
         else:
@@ -362,13 +366,14 @@ class MPPCLine:
         return 0.
 
 class MPPCLines:
-    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, verbose=False):
+    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False):
         '''
         Given a set of input root files, construct the group of MPPC lines.
         '''
-        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, verbose) for infpn in infpns]
+        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose) for infpn in infpns]
+        self.voltage_offset = voltage_offset
     
-    def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True):
+    def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True, vset=False):
         '''
         This method takes a set of measurements with various bias voltages,
         plots total gain vs. bias voltage, fits a line, and takes the
@@ -381,7 +386,7 @@ class MPPCLines:
             if (not line.fitp) or (not line.fitpcov):
                 outfpn = None
                 if outpn:
-                    outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
+                    outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}_voffset{}.png'.format(line.feb_id, line.ch, line.voltage_offset)
                 if use_fit_fun:
                     if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
                         x.append(line.bias_voltage)
@@ -394,7 +399,11 @@ class MPPCLines:
                     # store intermediate plots
                     line.show_spectrum_and_fit(outpn, outfn)
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
-        plt.xlabel('bias voltage (V)')
+        # decide x label
+        xtitle = 'bias voltage (V)'
+        if vset:
+            xtitle = r'V$_{set}$ (V)'
+        plt.xlabel(xtitle)
         plt.ylabel('total gain (ADC/PE)')
         par_str = r'preamp gain:{} temperature:{:.2f}°C DAC:{} bias:{}'.format(self.mppc_lines[0].preamp_gain, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold, self.mppc_lines[0].bias_regulation)
         plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str), fontsize=10)
@@ -430,7 +439,7 @@ class MPPCLines:
         if outpn:
             substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
             del substrs[1]
-            outfn = '_'.join(substrs) + '_b{}c{}.png'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch)
+            outfn = '_'.join(substrs) + '_b{}c{}_voffset{}.png'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, self.voltage_offset)
             outfpn = os.path.join(outpn, outfn)
             easy_save_to(plt, outfpn)
         else:
@@ -452,7 +461,7 @@ class MPPCLines:
         for line in self.mppc_lines:
             outfpn = None
             if outpn:
-                outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}.png'.format(line.feb_id, line.ch)
+                outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}_voffset{}.png'.format(line.feb_id, line.ch, line.voltage_offset)
             if use_fit_fun:
                 if (not line.fitp) or (not line.fitpcov):
                     if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
@@ -468,7 +477,7 @@ class MPPCLines:
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
         plt.xlabel('preamp gain')
         plt.ylabel('total gain')
-        par_str = r'V$_{{bias}}$:{}V temperature:{:.2f}°C DAC:{}'.format(self.mppc_lines[0].bias_voltage, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold)
+        par_str = r'V$_{{set}}$:{}V temperature:{:.2f}°C DAC:{}'.format(self.mppc_lines[0].bias_voltage+self.mppc_lines[0].voltage_offset, self.mppc_lines[0].temperature, self.mppc_lines[0].threshold)
         plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str))
         if outpn:
             substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
