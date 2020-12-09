@@ -418,7 +418,7 @@ class MPPCLines:
             plt.close()
             return -1
         vbd = self.fitp[1]
-        vmax = x[-1]*1.01
+        vmax = max(x)*1.01
         vmin = vbd*.95
         xgain = np.linspace(vbd, vmax, 101)
         ygain = breakdown_voltage_linear_function(xgain, *self.fitp)
