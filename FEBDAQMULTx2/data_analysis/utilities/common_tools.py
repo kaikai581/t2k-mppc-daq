@@ -373,6 +373,20 @@ class MPPCLines:
         self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose) for infpn in infpns]
         self.voltage_offset = voltage_offset
     
+    def enumerate_peaks(self):
+        '''
+        This method implements Wojciech's algorithm to number each peak correctly.
+        The idea is to plot ADC vs. peak number where peak numbers can have arbitrary offset due to unknown data taking thresholds.
+        If one plots the ADC vs. peak number lines with several different gains, and shifts them to the left or right,
+        then the configuration where all lines intersect is the correct solution.
+        '''
+        nlines = len(self.mppc_lines)
+        if nlines < 3:
+            print('This enumerating algorithm requires at least 3 MPPC lines to ')
+        rranges = tuple([slice(-1, 5, 1) for _ in range(nlines-1)])
+        resbrute = optimize.brute(average_distance, rranges, args=mppc_lines, full_output=True, finish=None)
+
+    
     def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True, vset=False):
         '''
         This method takes a set of measurements with various bias voltages,
@@ -395,7 +409,8 @@ class MPPCLines:
                 else:
                     x.append(line.bias_voltage)
                     y.append(line.gainfitp[0])
-                    yerr.append(math.sqrt(line.gainfitpcov[0][0]))
+                    cur_yerr = math.sqrt(line.gainfitpcov[0][0]) # avoid divide by zero issue when fitting
+                    yerr.append(cur_yerr if cur_yerr > 0 else 0.01)
                     # store intermediate plots
                     line.show_spectrum_and_fit(outpn, outfn)
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
