@@ -3,11 +3,14 @@ from matplotlib import markers
 from scipy.signal import find_peaks
 from scipy.stats import norm, poisson
 from sympy import Point2D, Line2D
+from sympy.geometry.util import centroid
+import copy
 import math
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import random
 import scipy.optimize as optimization
 import seaborn as sns
 import statistics
@@ -372,8 +375,27 @@ class MPPCLines:
         '''
         self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose) for infpn in infpns]
         self.voltage_offset = voltage_offset
+        # result containers
+        self.centroid_intersection_points = None
+        self.enumerated_lines = None
+
+    def average_distance(self, z, *params):
+        shifted_lines = copy.deepcopy(params)
+        # first, shift the lines
+        assert(len(shifted_lines) == len(z)+1)
+        for i in range(len(z)):
+            shifted_lines[i+1].shift_peak_id(z[i])
+        # then, calculate the intersection points
+        int_pts = self.find_intersection_points(shifted_lines)
+        tot_dist = 0.
+        npts = 0
+        for i in range(len(int_pts)):
+            for j in range(i+1, len(int_pts)):
+                tot_dist += int_pts[i].distance(int_pts[j])
+                npts += 1
+        return (tot_dist/float(npts) if npts > 0 else tot_dist)
     
-    def enumerate_peaks(self):
+    def enumerate_peaks(self, outpn):
         '''
         This method implements Wojciech's algorithm to number each peak correctly.
         The idea is to plot ADC vs. peak number where peak numbers can have arbitrary offset due to unknown data taking thresholds.
@@ -383,10 +405,33 @@ class MPPCLines:
         nlines = len(self.mppc_lines)
         if nlines < 3:
             print('This enumerating algorithm requires at least 3 MPPC lines to ')
-        rranges = tuple([slice(-1, 5, 1) for _ in range(nlines-1)])
-        resbrute = optimize.brute(average_distance, rranges, args=mppc_lines, full_output=True, finish=None)
+        rranges = tuple([slice(-3, 3, 1) for _ in range(nlines-1)])
+        resbrute = optimization.brute(self.average_distance, rranges, args=self.mppc_lines, full_output=True, finish=None)
 
-    
+        # construct the resulting lines and intersection point
+        self.enumerated_lines = copy.deepcopy(self.mppc_lines)
+        shifts = resbrute[0]
+        assert(len(self.enumerated_lines) == len(shifts)+1)
+        for i in range(len(shifts)):
+            self.enumerated_lines[i+1].shift_peak_id(shifts[i])
+            int_pts = self.find_intersection_points(self.enumerated_lines)
+            self.centroid_intersection_points = centroid(*int_pts)
+
+        # make the resulting plot
+        self.plot_line_group(self.mppc_lines, None, os.path.join(outpn, 'before.png'))
+        self.plot_line_group(self.enumerated_lines, self.centroid_intersection_points, os.path.join(outpn, 'after.png'))
+
+    def find_intersection_points(self, lines):
+        int_pts = []
+        for i in range(len(lines)):
+            for j in range(i+1, len(lines)):
+                l1 = lines[i].line
+                l2 = lines[j].line
+                pt = l1.intersection(l2)
+                if pt:
+                    int_pts.append(pt[0])
+        return int_pts
+
     def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True, vset=False):
         '''
         This method takes a set of measurements with various bias voltages,
@@ -502,6 +547,33 @@ class MPPCLines:
             easy_save_to(plt, outfpn)
         else:
             plt.show()
+        plt.close()
+    
+    def plot_line_group(self, lines, p_cent, outfpn):
+        # plot points for each line
+        random.seed(100)
+        for line in lines:
+            # determine line color
+            rgb = (random.random(), random.random(), random.random())
+            # make scatter plot of points
+            px = np.array([p.x for p in line.points]).astype(float)
+            py = np.array([p.y for p in line.points]).astype(float)
+            plt.scatter(px, py, color=rgb)
+            # calculate the range of x and plot
+            xmax = max(px)*1.2
+            xmin = -line.coeff[1]/line.coeff[0]
+            fitx = np.linspace(xmin, xmax, 100)
+            fity = line.coeff[0]*fitx + line.coeff[1]
+            plt.plot(fitx, fity, '--', alpha=.7, color=rgb, label='{} V'.format(line.voltage))
+        if p_cent:
+            xx = float(p_cent.x)
+            yy = float(p_cent.y)
+            plt.plot(xx, yy, 'X', color='r')
+            plt.annotate('({:.2f},{:.2f})'.format(xx, yy), xy=(xx, yy), xytext=(xx+0.35, yy-30))
+        plt.legend()
+        plt.xlabel('PE ID')
+        plt.ylabel('ADC')
+        easy_save_to(plt, outfpn)
         plt.close()
 
 
