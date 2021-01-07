@@ -7,8 +7,10 @@ This project consists of 2 software GUI applications that control 5 hardware com
 ### Hardware Components
 The hardware components this project aims to control are
 * A PCB with 64 MPPCs
+
   This is the subject to study, and is not directly controlled by the software.
 * Two CAEN [DT5702](https://www.caen.it/products/dt5702/) front-end board (FEB) modules
+
   Each FEB has 32 channels. With two boards working together, 64-channel data can be taken at one shot.
 * Agilent (now Keysight) [N6700B](https://www.keysight.com/en/pd-838422-pn-N6700B/low-profile-modular-power-system-mainframe-400w-4-slots?cc=CA&lc=fre) Power System
 * Tektronix [AFG3252](https://www.tek.com/datasheet/afg3000-series) Arbitrary/Function Generator
