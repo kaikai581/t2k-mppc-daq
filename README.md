@@ -76,6 +76,7 @@ Note that it could happen that the project cannot run with arbitrary combination
   root -l 'FEBDAQMULT.C+("enp0s31f6")'
   ```
   Here, `enp0s31f6` is the name of the ethernet port connected to the unabridged switch. It can be obtained by executing `ifconfig` on the command line.
+
 3. To bring up the slow control app, simply click the "Slow Control" button on the bottom left of the DAQ GUI.
 
 ## Change Log
