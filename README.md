@@ -39,6 +39,44 @@ To ease the layout on the DAQ GUI, and use the slow control app on its own, the 
 ## Software Installation
 
 ### Anaconda as the Library Manager
+[Anaconda](https://www.anaconda.com/) is one of the most popular cross-platform python distributions. With its third-party repositories, such as conda-forge, Anaconda turns into a generic package repository, suitable for users without root permission to install library dependencies for their projects.
+
+This project adopts Anaconda as the library manager for portability and versatility.
+
+### Dependency Installation
+Download [Anaconda installer](https://www.anaconda.com/products/individual) corresponding to your operating system. Follow the [instructions](https://docs.anaconda.com/anaconda/install/) to install Anaconda on your host system.
+
+Once a working `conda` command exists on your system, follow the steps to install dependencies.
+1. Create and activate an environment.
+  ```
+  conda create -n daq
+  conda activate daq
+  # add the third-party channel conda-forge with priority
+  conda config --env --add channels conda-forge
+  ```
+2. Install the following packages with `conda`.
+  ```
+  conda install root cppzmq pyqt pyserial pyqtgraph pandas
+  ```
+3. Still, some libraries are not packaged in Anaconda. Fortunately, they are available through `pip`.
+  ```
+  pip install python-vxi11
+  ```
+
+Note that it could happen that the project cannot run with arbitrary combinations of all package versions. [Here](https://github.com/kaikai581/t2k-mppc-daq/blob/master/FEBDAQMULTx2/pkg_ver.txt) I provide a snapshot of a combination of all package versions that guarantees to run the applications.
+
+### Project Installation and Execution
+1. Clone this repository with your conda environment activated.
+  ```
+  git clone https://github.com/kaikai581/t2k-mppc-daq.git
+  ```
+2. Bring up the main DAQ GUI under superuser (yes, sorry, I do not keep my promise) by the command.
+  ```
+  cd FEBDAQMULTx2/DAQ
+  root -l 'FEBDAQMULT.C+("enp0s31f6")'
+  ```
+  Here, `enp0s31f6` is the name of the ethernet port connected to the unabridged switch. It can be obtained by executing `ifconfig` on the command line.
+3. To bring up the slow control app, simply click the "Slow Control" button on the bottom left of the DAQ GUI.
 
 ## Change Log
 On 20200827 I merged my test repo into my production repo to reduce repo redundancy. This project should be fine to be fully open.
