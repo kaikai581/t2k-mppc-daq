@@ -1,4 +1,5 @@
-# FEBDAQMULTx2
+# FEBDAQMULTx2 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/) [![made-with-cpp](https://img.shields.io/badge/C++-Solutions-blue.svg?style=flat&logo=c%2B%2B)](https://isocpp.org/)
+
 A dual board automated DAQ system for QA/QC of [Multi-Pixel Photon Counters (MPPC)](https://www.hamamatsu.com/us/en/product/optical-sensors/mppc/what_is_mppc/index.html).
 
 ## About The Project
@@ -28,11 +29,13 @@ This project contains two software GUI applications developed on a host computer
 
 * The main DAQ application for FEB configuration and control of data acquisition
 
-  The development philosophy of this app is trying to be a minimal two-board extension to the [reference DAQ](https://www.caen.it/download/?filter=DT5702) written in C++/ROOT for a single board provided by CAEN.
+  The development philosophy of this app is trying to achieve a minimal two-board extension to the [reference DAQ](https://www.caen.it/download/?filter=DT5702) written in C++/ROOT for a single board provided by CAEN. As of writing, three more tabs corresponding to a second board are added to the original app as shown below.
+  ![Alt text](images/daq.png?raw=true "Title")
 
 * A slow control app for all other instrument
 
   Including the power system, function generator, water circulator, and temperature sensors. This app is written in python/PyQT.
+  ![Alt text](images/slow_control.png?raw=true "Title")
 
 ### Software Communication
 
