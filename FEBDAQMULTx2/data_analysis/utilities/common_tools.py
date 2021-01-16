@@ -2,6 +2,8 @@
 from matplotlib import markers
 from scipy.signal import find_peaks
 from scipy.stats import norm, poisson
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 from sympy import Point2D, Line2D
 from sympy.geometry.util import centroid
 import copy
@@ -69,6 +71,11 @@ class MPPCLine:
         self.temperature = self.get_temperature()
         # record the threshold
         self.threshold = self.get_threshold()
+        # record the prominence used for peak finding
+        self.prominence = prom
+        # record the left and right thresholds for the peak cleanup algorithm
+        self.pc_lth = pc_lth
+        self.pc_rth = pc_rth
         # record the fit parameters from a function fit to the ADC spectrum
         self.fitp = None
         self.fitpcov = None
@@ -104,9 +111,9 @@ class MPPCLine:
         self.voltage = self.voltage_from_filename(infpn)
 
         # do linear fit with scipy's curve_fit for uncertainties in total gain
-        x_try = [float(p.x) for p in self.points]
-        y_try = [float(p.y) for p in self.points]
-        self.gainfitp, self.gainfitpcov = optimization.curve_fit(my_linear_fun, x_try, y_try, [70, -250])
+        self.x_try = [float(p.x) for p in self.points]
+        self.y_try = [float(p.y) for p in self.points]
+        self.gainfitp, self.gainfitpcov = optimization.curve_fit(my_linear_fun, self.x_try, self.y_try, [70, -250])
     
     def adc_spectrum(self, adcmin = 0, adcmax = 4100, savepn=None):
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
@@ -261,6 +268,54 @@ class MPPCLine:
         
         return -1
 
+    def save_gain(self, outfpn):
+        '''
+        Save the fit result of gain to file.
+        '''
+        # if file exists, read it into a dataframe;
+        # otherwise create a new dataframe
+        columns = ['filename','board','channel','prominence','left_threshold','right_threshold','bias_voltage','gain','gain_err','r2']
+        if os.path.exists(outfpn):
+            df = pd.read_csv(outfpn)
+        else:
+            df = pd.DataFrame(columns=columns)
+        df = df.set_index(columns[:6])
+
+        # use r2 score as a linearity measure
+        lin_model = LinearRegression()
+        lin_model.fit(np.array(self.x_try).reshape(-1,1), self.y_try)
+        r2_gof = r2_score(self.y_try, lin_model.predict(np.array(self.x_try).reshape(-1,1)))
+
+        # construct the data dictionary
+        new_data = dict()
+        new_data['filename'] = os.path.basename(self.infpn)
+        new_data['board'] = self.feb_id
+        new_data['channel'] = self.ch
+        new_data['prominence'] = self.prominence
+        new_data['left_threshold'] = self.pc_lth
+        new_data['right_threshold'] = self.pc_rth
+        new_data['bias_voltage'] = self.bias_voltage
+        new_data['gain'] = self.gainfitp[0]
+        new_data['gain_err'] = math.sqrt(self.gainfitpcov[0][0])
+        new_data['r2'] = r2_gof
+
+        # make a new dataframe out of the new data record
+        df_new = pd.DataFrame(columns=columns)
+        df_new = df_new.append(new_data, ignore_index=True)
+        df_new = df_new.set_index(columns[:6])
+        print('Saving gain to file:')
+        print(df_new.head())
+
+        # append new data if not exist
+        # otherwise overwrite
+        df = df.combine_first(df_new)
+
+        # Write to file
+        outpn = os.path.dirname(outfpn)
+        if not os.path.exists(outpn):
+            os.makedirs(outpn)
+        df.to_csv(outfpn, mode='w')
+
     def shift_and_match(self, pkadcs):
         '''
         This method shifts the peak IDs to the left or right in a small range,
@@ -378,6 +433,15 @@ class MPPCLines:
         # result containers
         self.centroid_intersection_points = None
         self.enumerated_lines = None
+        # use folder name as the measurement id
+        try:
+            self.measurement_id = os.path.dirname(self.mppc_lines[0].infpn).split('/')[-1]
+        except:
+            self.measurement_id = ''
+        # store board number
+        self.feb_id = feb_id
+        # store channel id
+        self.ch = ch
 
     def average_distance(self, z, *params):
         shifted_lines = copy.deepcopy(params)
@@ -506,6 +570,11 @@ class MPPCLines:
             plt.show()
         plt.close()
 
+        # use r2 score as a goodness of fit measure
+        lin_model = LinearRegression()
+        lin_model.fit(np.array(x).reshape(-1,1), y)
+        self.r2_gof = r2_score(y, lin_model.predict(np.array(x).reshape(-1,1)))
+
         return 1
     
     def fit_total_gain_vs_preamp_gain(self, outpn=None, use_fit_fun=True):
@@ -575,6 +644,46 @@ class MPPCLines:
         plt.ylabel('ADC')
         easy_save_to(plt, outfpn)
         plt.close()
+    
+    def save_breakdowns(self, outfpn):
+        # if file exists, read it into a dataframe;
+        # otherwise create a new dataframe
+        columns = ['measurement_id','board','channel','breakdown_voltage','breakdown_voltage_err','r2']
+        if os.path.exists(outfpn):
+            df = pd.read_csv(outfpn)
+        else:
+            df = pd.DataFrame(columns=columns)
+        df = df.set_index(columns[:3])
+
+        # construct the data dictionary
+        new_data = dict()
+        new_data['measurement_id'] = self.measurement_id
+        new_data['board'] = self.feb_id
+        new_data['channel'] = self.ch
+        new_data['breakdown_voltage'] = self.fitp[1]
+        new_data['breakdown_voltage_err'] = math.sqrt(self.fitpcov[1][1])
+        new_data['r2'] = self.r2_gof
+
+        # make a new dataframe out of the new data record
+        df_new = pd.DataFrame(columns=columns)
+        df_new = df_new.append(new_data, ignore_index=True)
+        df_new = df_new.set_index(columns[:3])
+        print('Saving breakdown voltage:')
+        print(df_new.head())
+
+        # append new data if not exist
+        # otherwise overwrite
+        df = df.combine_first(df_new)
+
+        # Write to file
+        outpn = os.path.dirname(outfpn)
+        if not os.path.exists(outpn):
+            os.makedirs(outpn)
+        df.to_csv(outfpn, mode='w')
+
+    def save_gains(self, outfpn):
+        for mppc_line in self.mppc_lines:
+            mppc_line.save_gain(outfpn)
 
 
 class PeakCleanup:
