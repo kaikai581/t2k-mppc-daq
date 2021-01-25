@@ -384,12 +384,13 @@ void UpdateConfig()
     
     for(int feb=0; feb<t->nclients; feb++)
     {
+        int bitlen = 0;
         SetDstMacByIndex(feb);
         t->ReadBitStream("CITIROC_PROBEbitstream.txt",bufPMR);
-        //t->dstmac[5]=0xff; //Broadcast
+        // t->dstmac[5]=0xff; //Broadcast
         sprintf(bsname,"CITIROC_SC_SN%03d.txt",t->dstmac[5]);
         //if(!(t->ReadBitStream(bsname,bufSCR))) t->ReadBitStream("CITIROC_SC_DEFAULT.txt",bufSCR);
-        if(!(t->ReadBitStream(bsname,bufSCR))) t->ReadBitStream("CITIROC_SC_PROFILE1.txt",bufSCR);
+        if(!(bitlen = t->ReadBitStream(bsname,bufSCR))) bitlen = t->ReadBitStream("CITIROC_SC_PROFILE1.txt",bufSCR);
 
 
         *((uint32_t*)(&(bufFIL[0])))=*((uint32_t*)(&(bufSCR[265]))); //copy trigger enable channels from SCR to FIL tregister
@@ -401,7 +402,16 @@ void UpdateConfig()
         t->SendCMD(t->dstmac,FEB_WR_FIL,0x0000,bufFIL);
 
         // Print some debug information.
-        if(GUI_VERBOSE) std::cout << "In UpdateConfig(). BoardToMon value " << BoardToMon << "." << std::endl;
+        if(GUI_VERBOSE)
+        {
+            UChar_t bufPMR_read[1500];
+            std::cout << "In UpdateConfig(). BoardToMon value " << BoardToMon << " with MAC address " << (int)t->dstmac[5] << " and VCXO " << fNumberEntry75->GetNumber() << std::endl;
+            gROOT->ProcessLine(".! mkdir -p debug");
+            t->WriteBitStreamAnnotated(Form("debug/bufSCR%03d.txt", t->dstmac[5]), bufSCR, bitlen);
+            // t->SendCMD(t->dstmac, FEB_RD_PMR, 0xFF, bufPMR_read);
+            // std::cout << bufPMR_read << std::endl;
+            // for(int j = 256; j < 512; j++)std::cout << (int)bufPMR_read[j] << std::endl;
+        }
 
         for(int i=265; i<265+32;i++)
             if(ConfigGetBit(bufSCR,1144,i)) fChanEnaTrig[feb][i-265]->SetOn(); else fChanEnaTrig[feb][i-265]->SetOn(kFALSE);
@@ -529,35 +539,42 @@ void SendConfig()
     uint32_t trigmask=0;
     uint8_t bufFIL[256]; 
 
-    // specify the board to configure
-    SetDstMacByIndex(BoardToMon);
+    int curBoard = BoardToMon;
 
-    for(int i=265; i<265+32;i++)
-        if(fChanEnaTrig[BoardToMon][i-265]->IsOn()) ConfigSetBit(bufSCR,1144,i,1); else  ConfigSetBit(bufSCR,1144,i,0);
-
-    if(fChanEnaTrig[BoardToMon][32]->IsOn()) ConfigSetBit(bufSCR,1144,1139,1); else  ConfigSetBit(bufSCR,1144,1139,0); //OR32 enable
-
-    for(int i=0; i<32;i++)
-        if(fChanEnaAmp[BoardToMon][i]->IsOn()) ConfigSetBit(bufSCR,1144,633+i*15,0); else  ConfigSetBit(bufSCR,1144,633+i*15,1);
-
-    for(int i=0; i<32;i++)
-        if(fChanProbe[BoardToMon][i]->IsOn()) ConfigSetBit(bufPMR,224,96+i,1); else  ConfigSetBit(bufPMR,224,96+i,0);
-
-    for(int i=0; i<32;i++) ConfigSetBias(i, fChanBias[BoardToMon][i]->GetNumber());
-    for(int i=0; i<32;i++) ConfigSetGain(i, fChanGain[BoardToMon][i]->GetNumber());
-
-    for(int i=0; i<32;i++)
-        if(fChanEnaTrig[BoardToMon][i]->IsOn()) trigmask = trigmask | (0x1 << i);
-    *((uint32_t*)(&(bufFIL[0])))=trigmask;
-
-    //for(int feb=0; feb<t->nclients; feb++)
-    // {
+    for(int feb=0; feb<t->nclients; feb++)
+    {
     
-    // t->dstmac[5]=0xff; //Broadcast
-    t->SendCMD(t->dstmac,FEB_WR_SCR,0x0000,bufSCR);
-    t->SendCMD(t->dstmac,FEB_WR_PMR,0x0000,bufPMR);
-    t->SendCMD(t->dstmac,FEB_WR_FIL,0x0000,bufFIL);
-    // }
+        // t->dstmac[5]=0xff; //Broadcast
+        // specify the board to configure
+        SetDstMacByIndex(feb);
+
+        for(int i=265; i<265+32;i++)
+            if(fChanEnaTrig[feb][i-265]->IsOn()) ConfigSetBit(bufSCR,1144,i,1); else  ConfigSetBit(bufSCR,1144,i,0);
+
+        if(fChanEnaTrig[feb][32]->IsOn()) ConfigSetBit(bufSCR,1144,1139,1); else  ConfigSetBit(bufSCR,1144,1139,0); //OR32 enable
+
+        for(int i=0; i<32;i++)
+            if(fChanEnaAmp[feb][i]->IsOn()) ConfigSetBit(bufSCR,1144,633+i*15,0); else  ConfigSetBit(bufSCR,1144,633+i*15,1);
+
+        for(int i=0; i<32;i++)
+            if(fChanProbe[feb][i]->IsOn()) ConfigSetBit(bufPMR,224,96+i,1); else  ConfigSetBit(bufPMR,224,96+i,0);
+
+        for(int i=0; i<32;i++) ConfigSetBias(i, fChanBias[feb][i]->GetNumber());
+        for(int i=0; i<32;i++) ConfigSetGain(i, fChanGain[feb][i]->GetNumber());
+
+        for(int i=0; i<32;i++)
+            if(fChanEnaTrig[feb][i]->IsOn()) trigmask = trigmask | (0x1 << i);
+        *((uint32_t*)(&(bufFIL[0])))=trigmask;
+
+        t->SendCMD(t->dstmac,FEB_WR_SCR,0x0000,bufSCR);
+        t->SendCMD(t->dstmac,FEB_WR_PMR,0x0000,bufPMR);
+        t->SendCMD(t->dstmac,FEB_WR_FIL,0x0000,bufFIL);
+    }
+
+    BoardToMon = curBoard;
+
+    if(GUI_VERBOSE)
+        std::cout << "SendConfig() is called. Configuration should be sent." << std::endl;
 }
 
 void SendConfig2All()
