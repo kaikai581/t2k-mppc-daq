@@ -148,6 +148,7 @@ float rate[nboard]; // variables to store trigger rates for each board
 int GUI_VERBOSE = 0; // verbosity level of this GUI app
 bool QuitScan = false; // a flag for quitting a DAQ loop issued by a parameter scan
 float led_Vpp = -1; // a variable for storing the LED driving voltage
+std::string out_fdr = "";
 
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
@@ -2184,14 +2185,49 @@ void ProcessMessage(std::string msg)
     //***** Handle voltage scan scenario *****
     float vol = 58;
     float temp = 20;
+    float gain = -1;
+    float threshold_dac = -1;
     if(document.HasMember("vol")) vol = document["vol"].GetFloat();
     if(document.HasMember("temp")) temp = std::stof(document["temp"].GetString());
+    if(document.HasMember("gain")) gain = document["gain"].GetFloat();
+    if(document.HasMember("dac")) threshold_dac = document["dac"].GetFloat();
     // This means DAQ on!
     if(document.HasMember("parameter scan"))
     {
         // First, signal slow control I am busy.
         const char json[] = " { \"daq status\" : \"busy\" } ";
         SendMsg2SlowCtrl(json);
+
+        ////////////////////////////////////////////////////////////////////////
+        // set up the threshold
+        thr_vals[0] = threshold_dac;
+        thr_vals[1] = threshold_dac;
+
+        // remember the current tab
+        int curTabId = fTab683->GetCurrent();
+        // change values on the GUI and send configuration to FEB
+        int activeFeb = BoardToMon;
+        for(int bid = 0; bid < t->nclients; bid++)
+        {
+            BoardToMon = bid;
+            fNumberEntry755->SetNumber(threshold_dac);
+            fTab683->SetTab(bid);
+            SelectBoard();
+            SetDstMacByIndex(bid);
+            GUI_UpdateThreshold();
+        }
+
+        // restore settings
+        BoardToMon = activeFeb;
+        fTab683->SetTab(curTabId);
+        ////////////////////////////////////////////////////////////////////////
+
+        // configure preamp gain
+        if(gain > 0){
+            for(int bid = 0; bid < t->nclients; bid++)
+                for(int cid = 0; cid < 32; cid++)
+                    fChanGain[bid][cid]->SetNumber(gain);
+        }
 
         //***** DAQ sequence *****
         SendConfig2All();
@@ -2201,9 +2237,15 @@ void ProcessMessage(std::string msg)
         slowerBoard = -1;
         if(RunOn == 0) StartDAQ(psNEvt);
         // save to disk
-        char* outfpn = Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", dateID, timeID, vol, temp);
-        tr->SaveAs(outfpn);
-        SaveMetadata(std::string(outfpn), biasVoltage, temperature);
+        std::string outfpn = std::string(Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", dateID, timeID, vol, temp));
+        if(!out_fdr.empty())
+        {
+            // create output folder for grouping datasets
+            gROOT->ProcessLine(Form(".! mkdir -p output_data/%s", out_fdr.c_str()));
+            outfpn = std::string(Form("output_data/%s/%d_%d_mppc_volt%.1lf_temp%.1lf.root", out_fdr.c_str(), dateID, timeID, vol, temperature));
+        }
+        tr->SaveAs(outfpn.c_str());
+        SaveMetadata(outfpn, biasVoltage, temperature);
 
         // After data taking finishes, signal slow control I am ready.
         const char json_ready[] = " { \"daq status\" : \"ready\" } ";
@@ -2311,9 +2353,15 @@ void ProcessMessage(std::string msg)
                     slowerBoard = curFeb;
                     if(RunOn == 0) StartDAQ(drsNEvt);
                     // save to disk
-                    char* outfpn = Form("rate_scan/raw_data/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", dateID, timeID, curFeb, curCh, thr);
-                    tr->SaveAs(outfpn);
-                    SaveMetadata(std::string(outfpn), biasVoltage, temperature);
+                    std::string outfpn = std::string(Form("rate_scan/raw_data/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", dateID, timeID, curFeb, curCh, thr));
+                    if(!out_fdr.empty())
+                    {
+                        // create output folder for grouping datasets
+                        gROOT->ProcessLine(Form(".! mkdir -p output_data/%s", out_fdr.c_str()));
+                        outfpn = std::string(Form("rate_scan/raw_data/%s/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", out_fdr.c_str(), dateID, timeID, curFeb, curCh, thr));
+                    }
+                    tr->SaveAs(outfpn.c_str());
+                    SaveMetadata(outfpn, biasVoltage, temperature);
                     // summarize this scan
                     RateScanSummary(std::string(outfpn), dateID, timeID, curFeb, curCh, thr, drsNEvt);
 

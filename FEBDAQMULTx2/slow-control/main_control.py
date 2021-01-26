@@ -340,21 +340,21 @@ class Window(QWidget):
         self.editParVal['vol']['from'] = QLineEdit('58')
         self.editParVal['vol']['to'] = QLineEdit('60')
         self.editParVal['vol']['step'] = QLineEdit('1')
-        self.editParVal['feb1dac']['from'] = QLineEdit('230')
-        self.editParVal['feb1dac']['to'] = QLineEdit('230')
-        self.editParVal['feb1dac']['step'] = QLineEdit('0')
-        self.editParVal['feb1gain']['from'] = QLineEdit('60')
-        self.editParVal['feb1gain']['to'] = QLineEdit('60')
-        self.editParVal['feb1gain']['step'] = QLineEdit('0')
+        self.editParVal['feb1dac']['from'] = QLineEdit('200')
+        self.editParVal['feb1dac']['to'] = QLineEdit('200')
+        self.editParVal['feb1dac']['step'] = QLineEdit('1')
+        self.editParVal['feb1gain']['from'] = QLineEdit('52')
+        self.editParVal['feb1gain']['to'] = QLineEdit('52')
+        self.editParVal['feb1gain']['step'] = QLineEdit('1')
         self.editParVal['feb1bias']['from'] = QLineEdit('200')
         self.editParVal['feb1bias']['to'] = QLineEdit('200')
         self.editParVal['feb1bias']['step'] = QLineEdit('0')
         self.editParVal['feb2dac']['from'] = QLineEdit('230')
         self.editParVal['feb2dac']['to'] = QLineEdit('230')
         self.editParVal['feb2dac']['step'] = QLineEdit('0')
-        self.editParVal['feb2gain']['from'] = QLineEdit('60')
-        self.editParVal['feb2gain']['to'] = QLineEdit('60')
-        self.editParVal['feb2gain']['step'] = QLineEdit('0')
+        self.editParVal['feb2gain']['from'] = QLineEdit('52')
+        self.editParVal['feb2gain']['to'] = QLineEdit('52')
+        self.editParVal['feb2gain']['step'] = QLineEdit('1')
         self.editParVal['feb2bias']['from'] = QLineEdit('200')
         self.editParVal['feb2bias']['to'] = QLineEdit('200')
         self.editParVal['feb2bias']['step'] = QLineEdit('0')
@@ -432,7 +432,7 @@ class Window(QWidget):
         
         # After discussion with the boss, these parameters might not need to be
         # scanned. Therefore by default uncheck the checkboxes.
-        for parkey in ['feb1dac', 'feb1bias', 'feb1gain', 'feb2dac', 'feb2bias', 'feb2gain']:
+        for parkey in ['feb1bias', 'feb2dac', 'feb2bias', 'feb2gain']:
             self.includeParCB[parkey].setChecked(False)
             self.includeParCB[parkey].setEnabled(False)
         # Temperature scan takes much time, so disabe by default
@@ -670,9 +670,28 @@ class Window(QWidget):
             if vol_step > 0:
                 # add a small epsilon to include the endpoint
                 vol_vals = list(np.arange(vol_from, vol_to+vol_step/1e5, vol_step))
+        # Scan preamp gain. One value for both FEBs.
+        gain_vals = []
+        if self.includeParCB['feb1gain'].isChecked():
+            gain_from = float(self.editParVal['feb1gain']['from'].text())
+            gain_to = float(self.editParVal['feb1gain']['to'].text())
+            gain_step = float(self.editParVal['feb1gain']['step'].text())
+            if gain_step > 0:
+                # add a small epsilon to include the endpoint
+                gain_vals = list(np.arange(gain_from, gain_to+gain_step/1e5, gain_step))
+        # Scan threshold. One value for both FEBs.
+        threshold_vals = []
+        if self.includeParCB['feb1dac'].isChecked():
+            threshold_from = float(self.editParVal['feb1dac']['from'].text())
+            threshold_to = float(self.editParVal['feb1dac']['to'].text())
+            threshold_step = float(self.editParVal['feb1dac']['step'].text())
+            if threshold_step > 0:
+                # add a small epsilon to include the endpoint
+                threshold_vals = list(np.arange(threshold_from, threshold_to+threshold_step/1e5, threshold_step))
         # assemble the parameter scan queue
         ntemp = len(temp_vals) if len(temp_vals) > 0 else 1
         nvol = len(vol_vals) if len(vol_vals) > 0 else 1
+        ngain = len(gain_vals) if len(gain_vals) > 0 else 1
         itemp = 0
         self.psQueue = []
         for i in range(ntemp):
@@ -685,6 +704,23 @@ class Window(QWidget):
                     self.psQueue[-1]['vol'] = vol_vals[ivol]
                     ivol += 1
             itemp += 1
+        
+        # add threshold into queue
+        proliferate_list = []
+        for threshold in threshold_vals:
+            for j in range(len(self.psQueue)):
+                self.psQueue[j]['dac'] = threshold
+                proliferate_list.append(self.psQueue[j].copy())
+        self.psQueue = proliferate_list
+
+        # add gain into queue
+        proliferate_list = []
+        for gain in gain_vals:
+            for j in range(len(self.psQueue)):
+                self.psQueue[j]['gain'] = gain
+                proliferate_list.append(self.psQueue[j].copy())
+        self.psQueue = proliferate_list
+        print('Packaged message:', self.psQueue)
 
     def tsLogReadouts(self):
         if not self.tsLogDataCkB.isChecked():
