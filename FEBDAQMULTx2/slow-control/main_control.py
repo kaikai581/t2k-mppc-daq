@@ -579,7 +579,6 @@ class Window(QWidget):
                 par_table['number of events'] = self.editNEvt.text()
                 par_table['parameter scan'] = 'on'
                 par_table['bias_voltage'] = self.puVsetEdit.text()
-                par_table['temperature'] = statistics.mean([self.tsY[sen_it][-1] for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']])
                 if self.fgOutputSwitch.isChecked:
                     par_table['led_Vpp'] = float(self.fgAmplEdit.text())
                 else:
@@ -713,11 +712,15 @@ class Window(QWidget):
                 proliferate_list.append(self.psQueue[j].copy())
         self.psQueue = proliferate_list
 
-        # add gain into queue
+        # add gain and time into queue
+        current_time = datetime.datetime.now()
+        current_temp = statistics.mean([self.tsY[sen_it][-1] for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']])
         proliferate_list = []
         for gain in gain_vals:
             for j in range(len(self.psQueue)):
                 self.psQueue[j]['gain'] = gain
+                self.psQueue[j]['time'] = current_time.strftime('%H%M%S')
+                self.psQueue[j]['temperature'] = current_temp
                 proliferate_list.append(self.psQueue[j].copy())
         self.psQueue = proliferate_list
         print('Packaged message:', self.psQueue)

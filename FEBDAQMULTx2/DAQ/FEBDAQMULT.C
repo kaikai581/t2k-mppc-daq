@@ -148,7 +148,6 @@ float rate[nboard]; // variables to store trigger rates for each board
 int GUI_VERBOSE = 0; // verbosity level of this GUI app
 bool QuitScan = false; // a flag for quitting a DAQ loop issued by a parameter scan
 float led_Vpp = -1; // a variable for storing the LED driving voltage
-std::string out_fdr = "";
 
 const Double_t initpar0[7]={7000,100,700,9.6,1.18,0.3,0.5};
 const Double_t initpar1[7]={3470,100,700,9.5,2.25,3e-3,3.7e-2};
@@ -2109,6 +2108,7 @@ void ProcessMessage(std::string msg)
     int drsNEvt = 0;
     float biasVoltage = -1;
     float temperature = -1;
+    std::string out_fdr = "";
 
     // make sure output directory exists
     gROOT->ProcessLine(".! mkdir -p output_data");
@@ -2187,10 +2187,12 @@ void ProcessMessage(std::string msg)
     float temp = 20;
     float gain = -1;
     float threshold_dac = -1;
+    int msg_time = -1;
     if(document.HasMember("vol")) vol = document["vol"].GetFloat();
     if(document.HasMember("temp")) temp = std::stof(document["temp"].GetString());
     if(document.HasMember("gain")) gain = document["gain"].GetFloat();
     if(document.HasMember("dac")) threshold_dac = document["dac"].GetFloat();
+    if(document.HasMember("time")) msg_time = std::stoi(document["time"].GetString());
     // This means DAQ on!
     if(document.HasMember("parameter scan"))
     {
@@ -2238,11 +2240,13 @@ void ProcessMessage(std::string msg)
         if(RunOn == 0) StartDAQ(psNEvt);
         // save to disk
         std::string outfpn = std::string(Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", dateID, timeID, vol, temp));
+        // if there is message time information, store to the subfolder
+        out_fdr = std::string(Form("%d_%d_mppc", dateID, msg_time));
         if(!out_fdr.empty())
         {
             // create output folder for grouping datasets
             gROOT->ProcessLine(Form(".! mkdir -p output_data/%s", out_fdr.c_str()));
-            outfpn = std::string(Form("output_data/%s/%d_%d_mppc_volt%.1lf_temp%.1lf.root", out_fdr.c_str(), dateID, timeID, vol, temperature));
+            outfpn = std::string(Form("output_data/%s/%d_%d_mppc_volt%.1lf_thr%d_gain%d_temp%.1lf.root", out_fdr.c_str(), dateID, timeID, vol, threshold_dac, gain, temperature));
         }
         tr->SaveAs(outfpn.c_str());
         SaveMetadata(outfpn, biasVoltage, temperature);
