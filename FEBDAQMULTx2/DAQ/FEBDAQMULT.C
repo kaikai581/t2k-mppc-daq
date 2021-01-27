@@ -2246,7 +2246,7 @@ void ProcessMessage(std::string msg)
         {
             // create output folder for grouping datasets
             gROOT->ProcessLine(Form(".! mkdir -p output_data/%s", out_fdr.c_str()));
-            outfpn = std::string(Form("output_data/%s/%d_%d_mppc_volt%.1lf_thr%d_gain%d_temp%.1lf.root", out_fdr.c_str(), dateID, timeID, vol, threshold_dac, gain, temperature));
+            outfpn = std::string(Form("output_data/%s/%d_%d_mppc_volt%.1lf_thr%d_gain%d_temp%.1lf.root", out_fdr.c_str(), dateID, timeID, vol, int(threshold_dac), int(gain), temperature));
         }
         tr->SaveAs(outfpn.c_str());
         SaveMetadata(outfpn, biasVoltage, temperature);
