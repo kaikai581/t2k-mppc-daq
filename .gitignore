@@ -139,6 +139,7 @@ dmypy.json
 *.csv
 *.h5
 *.root
+!caen_measurement.csv
 
 # Processed and output data
 plots/
