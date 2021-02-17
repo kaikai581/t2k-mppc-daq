@@ -8,6 +8,10 @@ import common_tools
 import matplotlib.pyplot as plt
 import pandas as pd
 
+# redirect output to avoid x11 error
+import matplotlib
+matplotlib.use('Agg')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--input_database', type=str, default='processed_data/breakdown_database.csv')

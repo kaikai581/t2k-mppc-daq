@@ -21,11 +21,13 @@ import sys
 import uproot
 
 class MPPCLine:
-    def __init__(self, infpn, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False):
+    def __init__(self, infpn, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False, pcb_half=None):
         '''
         The constructor is responsible for finding peak positions given
         a filename and a channel ID.
         '''
+        self.uproot_ver = get_uproot_version()
+
         if verbose:
             print('Processing:\n', infpn)
         # get the dataframe either from a .h5 file or a .root file directly
@@ -39,13 +41,24 @@ class MPPCLine:
                 return
         elif fext == '.root':
             tr_mppc = uproot.open(infpn)['mppc']
-            df = tr_mppc.pandas.df()
+            if self.uproot_ver == 3:
+                df = tr_mppc.pandas.df()
+            elif self.uproot_ver == 4:
+                df = tr_mppc.arrays(library='pd')
+            else:
+                print('Only uproot3 and uproot4 are implemented!')
+                sys.exit(-1)
             df['feb_num'] = df['mac5'].apply(lambda x: 0 if x == 85 else 1 if x == 170 else -1)
             if verbose:
                 print('Converted dataframe from ROOT:\n', df)
             try:
                 tr_metadata = uproot.open(infpn)['metadata']
-                self.df_metadata = tr_metadata.pandas.df()
+                if self.uproot_ver == 3:
+                    self.df_metadata = tr_metadata.pandas.df()
+                elif self.uproot_ver == 4:
+                    self.df_metadata = tr_metadata.arrays(library='pd')
+                else:
+                    self.df_metadata = pd.DataFrame()
             except:
                 self.df_metadata = pd.DataFrame()
         else:
@@ -60,6 +73,15 @@ class MPPCLine:
         self.feb_id = feb_id
         self.ch = ch
         self.chvar = 'chg[{}]'.format(ch)
+        self.pcb_half = feb_id
+        if pcb_half is not None: # Originally I used: if pcb_half: <=== very tricky bug!!!!! Since the input can happen to be 0!!
+            self.pcb_half = pcb_half
+        if self.verbose:
+            print('**********\nPCB is set up to be', self.pcb_half)
+            print('**********\nPCB half argument to this class:', pcb_half)
+        # get the number of boards involved in this dataset
+        # the metadata is written such that the board number is always 0 if only one FEB is used, regardless of the FEB MAC...
+        self.nboards = self.get_nboards()
         # record the preamp gain
         self.preamp_gain = self.get_preamp_gain()
         # record the voltage offset in case Vset is not Vbias
@@ -204,7 +226,10 @@ class MPPCLine:
     def get_bias_regulation(self):
         if not self.df_metadata.empty:
             df = self.df_metadata
-            df_sel = df[(df['isTrigger'] == True) & (df['board'] == self.feb_id)]
+            if self.nboards == 1:
+                df_sel = df[(df['isTrigger'] == True)]
+            else:
+                df_sel = df[(df['isTrigger'] == True) & (df['board'] == self.feb_id)]
             if not df_sel.empty:
                 return df_sel['channelBias'].iloc[0]
         else: # try to get bias voltage from the file name
@@ -233,6 +258,14 @@ class MPPCLine:
         coeff = np.polyfit(x_try, y_try, 1)
         return Line2D(Point2D(0, coeff[1]), slope=coeff[0]), coeff
     
+    def get_nboards(self):
+        '''
+        Get the number of FEBs involved in this dataset.
+        '''
+        if not self.df_metadata.empty:
+            return len(self.df_metadata['board'].unique())
+        return 2
+
     def get_parameter_string(self):
         '''
         Return a string of physical parameters for use as plots' title.
@@ -243,21 +276,36 @@ class MPPCLine:
 
     def get_preamp_gain(self):
         if not self.df_metadata.empty:
+            if self.verbose:
+                print('Getting preamp gain from the metadata tree...')
             df = self.df_metadata.copy()
             if not df.empty:
-                df_sel = df[(df['isTrigger'] == True) & (df.board == self.feb_id)]
+                if self.nboards == 1:
+                    df_sel = df[(df['isTrigger'] == True)]
+                else:
+                    df_sel = df[(df['isTrigger'] == True) & (df.board == self.feb_id)]
+                if self.verbose:
+                    print('metadata entry:\n', df_sel)
                 if not df_sel.empty:
                     return df_sel['preampGain'].iloc[0]
         else:
+            if self.verbose:
+                print('Getting preamp gain from file name...')
             for substr in self.infpn.split('_'):
+                # I happen to use two different kinds of conventions...
                 if 'preamp' in substr:
                     return float(substr.lstrip('preamp'))
+                if 'gain' in substr:
+                    return float(substr.lstrip('gain'))
         return -1
     
     def get_temperature(self):
         if not self.df_metadata.empty:
             df = self.df_metadata
-            df_sel = df[(df.board == self.feb_id) & (df.channel == self.ch)]
+            if self.nboards == 1:
+                df_sel = df[df.channel == self.ch]
+            else:
+                df_sel = df[(df.board == self.feb_id) & (df.channel == self.ch)]
             if not df_sel.empty:
                 return df_sel['temperature'].iloc[0]
         else: # try to get bias voltage from the file name
@@ -278,7 +326,12 @@ class MPPCLine:
                     return 0
             elif fext == '.root':
                 tr_mppc = uproot.open(self.infpn)['metadata']
-                df = tr_mppc.pandas.df()
+                if self.uproot_ver == 3:
+                    df = tr_mppc.pandas.df()
+                elif self.uproot_ver == 4:
+                    df = tr_mppc.arrays(library='pd')
+                else:
+                    return -2
             df_selch = df[df['isTrigger'] == True]
 
             if len(df_selch) >= 1:
@@ -296,7 +349,7 @@ class MPPCLine:
         '''
         # if file exists, read it into a dataframe;
         # otherwise create a new dataframe
-        columns = ['filename','board','channel','prominence','left_threshold','right_threshold','bias_voltage','gain','gain_err','r2', 'preamp_gain', 'absolute_gain']
+        columns = ['filename','board','channel','prominence','left_threshold','right_threshold','bias_voltage','gain','gain_err','r2', 'preamp_gain', 'absolute_gain', 'pcb_half']
         if os.path.exists(outfpn):
             df = pd.read_csv(outfpn)
         else:
@@ -322,6 +375,7 @@ class MPPCLine:
         new_data['r2'] = r2_gof
         new_data['preamp_gain'] = self.preamp_gain
         new_data['absolute_gain'] = self.absolute_gain
+        new_data['pcb_half'] = self.pcb_half
 
         # make a new dataframe out of the new data record
         df_new = pd.DataFrame(columns=columns)
@@ -428,8 +482,8 @@ class MPPCLine:
         axs[1].annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(self.gainfitp[0],math.sqrt(self.gainfitpcov[0][0])), xy=(0.52, 0.4), xycoords='axes fraction')
         # compare curve_fit results to polyfit
         if self.verbose:
-            print(self.coeff[0], fitp[0])
-            print(self.coeff[1], fitp[1])
+            print(self.coeff[0], self.fitp[0])
+            print(self.coeff[1], self.fitp[1])
         
         plt.tight_layout()
         if savepn:
@@ -448,11 +502,11 @@ class MPPCLine:
         return 0.
 
 class MPPCLines:
-    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False):
+    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False, pcb_half=None):
         '''
         Given a set of input root files, construct the group of MPPC lines.
         '''
-        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose) for infpn in infpns]
+        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose, pcb_half) for infpn in infpns]
         self.voltage_offset = voltage_offset
         # result containers
         self.centroid_intersection_points = None
@@ -849,6 +903,14 @@ def easy_save_to(thisplt, outfpn):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     thisplt.savefig(outfpn)
+
+def get_uproot_version():
+    '''
+    Return the main version of uproot.
+    Uproot4 is in no way like uproot3.
+    As a result, this function helps call the respective interfaces.
+    '''
+    return int(uproot.__version__.split('.')[0])
 
 def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, excess, mu):
     '''
