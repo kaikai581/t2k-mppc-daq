@@ -93,7 +93,7 @@ def make_plot_from_raw(flist):
     plt.grid(axis='both')
 
     # prepare output folder
-    out_dir = 'plots'
+    out_dir = args.output_path
     out_dir = os.path.join(os.path.dirname(__file__), out_dir)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
@@ -118,7 +118,7 @@ def make_plot_from_summary(infpn):
     plt.title('b{} ch{}'.format(df['board'].iloc[0], df['channel'].iloc[0]))
 
     # prepare the output pathname
-    out_dir = 'plots'
+    out_dir = args.output_path
     out_dir = os.path.join(os.path.dirname(__file__), out_dir)
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
@@ -128,6 +128,7 @@ def make_plot_from_summary(infpn):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_files', nargs='*', default=['../data/root/20201028_184652_dark_rate_summary.root'], type=str)
+    parser.add_argument('-o', '--output_path', default='plots', type=str)
     args = parser.parse_args()
     infpns = args.input_files
     

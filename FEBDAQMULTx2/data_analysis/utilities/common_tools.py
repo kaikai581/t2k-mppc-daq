@@ -349,7 +349,7 @@ class MPPCLine:
         '''
         # if file exists, read it into a dataframe;
         # otherwise create a new dataframe
-        columns = ['filename','board','channel','prominence','left_threshold','right_threshold','bias_voltage','gain','gain_err','r2', 'preamp_gain', 'absolute_gain', 'pcb_half']
+        columns = ['filename','board','channel','prominence','left_threshold','right_threshold','bias_voltage','gain','gain_err','r2', 'preamp_gain', 'absolute_gain', 'pcb_half', 'first_peak_number']
         if os.path.exists(outfpn):
             df = pd.read_csv(outfpn)
         else:
@@ -376,6 +376,7 @@ class MPPCLine:
         new_data['preamp_gain'] = self.preamp_gain
         new_data['absolute_gain'] = self.absolute_gain
         new_data['pcb_half'] = self.pcb_half
+        new_data['first_peak_number'] = -1
 
         # make a new dataframe out of the new data record
         df_new = pd.DataFrame(columns=columns)
@@ -546,8 +547,10 @@ class MPPCLines:
         '''
         nlines = len(self.mppc_lines)
         if nlines < 3:
-            print('This enumerating algorithm requires at least 3 MPPC lines to ')
-        rranges = tuple([slice(-3, 3, 1) for _ in range(nlines-1)])
+            print('This enumerating algorithm requires at least 3 MPPC lines to function.')
+            print('You provide only', '1 line.' if len(self.mppc_lines) == 1 else '{} lines.'.format(len(self.mppc_lines)))
+            sys.exit(-1)
+        rranges = tuple([slice(-2, 2, 1) for _ in range(nlines-1)])
         resbrute = optimization.brute(self.average_distance, rranges, args=self.mppc_lines, full_output=True, finish=None)
 
         # construct the resulting lines and intersection point
@@ -558,10 +561,30 @@ class MPPCLines:
             self.enumerated_lines[i+1].shift_peak_id(shifts[i])
             int_pts = self.find_intersection_points(self.enumerated_lines)
             self.centroid_intersection_points = centroid(*int_pts)
+        
+        # shift the whole system to the correct position
+        cip = self.centroid_intersection_points
+        ped_num = int(cip.x) if cip.x > 0 else -int(abs(round(cip.x)))
+        for line in self.enumerated_lines:
+            line.shift_peak_id(line.points[0].x-ped_num)
+            line.line, line.coeff = line.get_line_from_points(line.points)
+        self.centroid_intersection_points = Point2D(self.centroid_intersection_points.x - ped_num, self.centroid_intersection_points.y)
 
         # make the resulting plot
-        self.plot_line_group(self.mppc_lines, None, os.path.join(outpn, 'before.png'))
-        self.plot_line_group(self.enumerated_lines, self.centroid_intersection_points, os.path.join(outpn, 'after.png'))
+        board = self.mppc_lines[0].feb_id
+        channel = self.mppc_lines[0].ch
+        preamp_gain = self.mppc_lines[0].preamp_gain
+        self.plot_line_group(self.mppc_lines, None, os.path.join(outpn, 'before_peak_rearrangement_b{}c{}_preamp_gain{}.png'.format(board, channel, preamp_gain)))
+        self.plot_line_group(self.enumerated_lines, self.centroid_intersection_points, os.path.join(outpn, 'after_peak_rearrangement_b{}c{}_preamp_gain{}.png'.format(board, channel, preamp_gain)))
+
+        # write to database
+        outfpn = 'processed_data/gain_database.csv'
+        if not os.path.exists(outfpn): return
+        df_gain = pd.read_csv(outfpn)
+        for line in self.enumerated_lines:
+            df_gain.loc[(df_gain['filename'] == os.path.basename(line.infpn)) & (df_gain['board'] == line.feb_id) & (df_gain['channel'] == line.ch), 'first_peak_number'] = line.points[0].x
+
+        df_gain.to_csv(outfpn, index=False)
 
     def find_intersection_points(self, lines):
         int_pts = []
