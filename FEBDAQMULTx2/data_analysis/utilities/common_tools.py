@@ -609,6 +609,7 @@ class MPPCLines:
         for line in self.mppc_lines:
             if (not line.fitp) or (not line.fitpcov):
                 outfpn = None
+                outfn = None
                 if outpn:
                     outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}_voffset{}.png'.format(line.feb_id, line.ch, line.voltage_offset)
                 if use_fit_fun:
