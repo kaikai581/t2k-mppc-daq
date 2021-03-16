@@ -93,7 +93,8 @@ class fitting_algorithm(common_tools.MPPCLines):
             print('You provide only', '1 line.' if len(self.mppc_lines) == 1 else '{} lines.'.format(len(self.mppc_lines)))
             sys.exit(-1)
         rranges = tuple([slice(0, shift_limit, 1) for _ in range(nlines)])
-        resbrute = optimize.brute(self.pedestal_adc_spreaad, rranges, full_output=True, finish=None, workers=-1)
+        # resbrute = optimize.brute(self.pedestal_adc_spreaad, rranges, full_output=True, finish=None, workers=-1)
+        resbrute = optimize.brute(self.pedestal_adc_spreaad, rranges, full_output=True, finish=None, workers=1)
         # print some fit information
         if self.verbose:
             print('Best configuration:', resbrute[0])

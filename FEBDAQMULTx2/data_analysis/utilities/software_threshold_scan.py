@@ -189,3 +189,125 @@ class adc_scan:
 
         # clear canvas
         plt.close()
+
+
+class peak_number_dataframe:
+    '''
+    This class has the same function as the adc_scan class.
+    However, it uses a dataframe input for the correct peak numbering.
+    '''
+    def __init__(self, dark_rate_fpns, df_led_calib_file, calib_thr, savgol_npts=11, prom=100, pc_lth=0.7, pc_rth=1.4, pcb_half=None):
+        '''
+        Constructor calculates dark rate as a function of threshold and loads a calibration LED spectrum.
+        
+        dark_rate_fpns   : a list or a string with wildcards of the threshold scan files
+        df_led_calib_file: a LED file with the same bias voltage and preamp gain for photoelectron calibration
+        '''
+        # query and store the uproot veresion
+        self.uproot_ver = common_tools.get_uproot_version()
+        if type(dark_rate_fpns) == str:
+            self.dark_rate_fpns = glob(dark_rate_fpns)
+        else:
+            self.dark_rate_fpns = dark_rate_fpns
+        
+        # load data trees one by one
+        x_dac = []
+        y_rate = []
+        for f in self.dark_rate_fpns:
+            tr = uproot.open(f)['mppc']
+            if self.uproot_ver == 3:
+                df = tr.pandas.df()
+            elif self.uproot_ver == 4:
+                df = tr.arrays(library='pd')
+            rate = len(df)/(df['ns_epoch'].max()-df['ns_epoch'].min())*1e9
+            y_rate.append(rate)
+            
+            tr_metadata = uproot.open(f)['metadata']
+            if self.uproot_ver == 3:
+                df_metadata = tr_metadata.pandas.df()
+            elif self.uproot_ver == 4:
+                df_metadata = tr_metadata.arrays(library='pd')
+            x_dac.append(df_metadata[df_metadata.isTrigger == True]['DAC'].iloc[0])
+        
+        # store bias voltage
+        self.bias_voltage = df_metadata['biasVoltage'].iloc[0]
+
+        ##
+        # construct the rate scan dataframe
+        # and find inflection points
+        ##
+        self.df_rate_scan = pd.DataFrame()
+        self.df_rate_scan['rate'] = y_rate
+        self.df_rate_scan['dac'] = x_dac
+        self.df_rate_scan = self.df_rate_scan.sort_values(by='dac')
+        self.df_rate_scan = self.df_rate_scan.reset_index(drop=True)
+        self.df_rate_scan['diff_rate'] = -self.df_rate_scan['rate'].diff().bfill()
+        self.df_rate_scan['log_rate'] = np.log10(self.df_rate_scan['rate'])
+        self.df_rate_scan['diff_log_rate'] = -self.df_rate_scan['log_rate'].diff().bfill()
+        # using Savitzky–Golay filter to smooth the curve of the first derivative
+        # ref: https://stackoverflow.com/questions/56486999/savitzky-golay-filtering-giving-incorrect-derivative-in-1d
+        # ref: https://riptutorial.com/scipy/example/15878/using-a-savitzky-golay-filter
+        dx = self.df_rate_scan['dac'][1]-self.df_rate_scan['dac'][0]
+        self.df_rate_scan['diff_log_rate_savgol'] = -scipy.signal.savgol_filter(self.df_rate_scan['log_rate'], savgol_npts, 3, deriv=1, delta=dx)
+        self.df_rate_scan['log_rate_savgol'] = scipy.signal.savgol_filter(self.df_rate_scan['log_rate'], savgol_npts, 3, deriv=0, delta=dx)
+        self.df_rate_scan['diff_log_rate_savgol_savgol'] = -scipy.signal.savgol_filter(self.df_rate_scan['log_rate_savgol'], savgol_npts, 3, deriv=1, delta=dx)
+        # finding local minima
+        # ref: https://stackoverflow.com/questions/48023982/pandas-finding-local-max-and-min
+        minarg = scipy.signal.find_peaks(self.df_rate_scan['diff_log_rate_savgol_savgol'], height=self.df_rate_scan['diff_log_rate_savgol'].max()*.4)
+        self.df_rate_scan['is_inflection'] = [True if i in minarg[0] else False for i in range(len(self.df_rate_scan))]
+
+        # store board number
+        self.feb_id = df_metadata[df_metadata.isTrigger == True]['board'].iloc[0]
+        # store channel number
+        self.ch = df_metadata[df_metadata.isTrigger == True]['channel'].iloc[0]
+
+        # store the peak number dataframe
+        self.df_peak_number = df_led_calib_file
+
+        # store the threshold used by calibration data
+        self.calib_thr = float(calib_thr)
+
+        # store output folder
+        self.outdir = os.path.join('plots', os.path.dirname(self.dark_rate_fpns[0]).split('/')[-1])
+
+    def dac_to_adc_and_pe(self, force_first_peak_number=None):
+        '''
+        Calculate the linear parameters for DAC to ADC conversion.
+        Check whether the pe numbering algorithm is already applied.
+        If not, spit a message to tell users to run it first and come back later.
+        '''
+        # check if pe numbering algorithm is run already
+        pe_numbering_file = os.path.join(os.path.dirname(__file__), '../4_mppc_gain_analysis/processed_data/gain_database.csv')
+        df_pe_numbering = self.df_peak_number
+        # get the first peak number
+        df_temp = df_pe_numbering[(df_pe_numbering.bias_voltage == self.bias_voltage) & (df_pe_numbering.pe == 0)]
+        if len(df_temp) == 0:
+            print('PE information does not exist in the peak numbering dataframe.')
+            sys.exit(-1)
+        if force_first_peak_number is None:
+            first_peak_number = df_temp.iloc[0]['shifted_pe']
+        else:
+            first_peak_number = force_first_peak_number
+
+        # build a list of increasing integers with equal interval 1 and of the same length as
+        # the number of found inflection points.
+        # The element of the new list has the first_peak_number value at the index at which the value in the inflection list is the first element larger than LED file's threshold.
+        df = self.df_rate_scan[self.df_rate_scan.is_inflection]
+        idx_first_peak = next(i for i, v in enumerate(df['dac']) if v > self.calib_thr)
+        pe_numbers = [i-(idx_first_peak-first_peak_number) for i in range(len(df))]
+        m, b = np.polyfit(df['dac'], pe_numbers, 1)
+        self.df_rate_scan['pe'] = self.df_rate_scan['dac']*m + b
+        
+        # make calibrated plot and save
+        plt.scatter(self.df_rate_scan['pe'], self.df_rate_scan['log_rate'], s=4, label='raw')
+        plt.plot(self.df_rate_scan['pe'], self.df_rate_scan['log_rate_savgol'], 'r--', label='Savitzky–Golay filtered')
+        plt.grid(axis='both')
+        plt.xlabel('photoelectron')
+        plt.ylabel(r'$\log_{10}(rate/Hz)$')
+        plt.legend()
+
+        outfpn = os.path.join(self.outdir, 'calibrated_dark_rate_scan.png')
+        common_tools.easy_save_to(plt, outfpn)
+
+        # clear canvas
+        plt.close()
