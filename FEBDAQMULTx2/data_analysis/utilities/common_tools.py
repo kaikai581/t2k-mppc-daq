@@ -539,7 +539,7 @@ class MPPCLines:
                 npts += 1
         return (tot_dist/float(npts) if npts > 0 else tot_dist)
     
-    def enumerate_peaks(self, outpn):
+    def enumerate_peaks(self, outpn=None):
         '''
         This method implements Wojciech's algorithm to number each peak correctly.
         The idea is to plot ADC vs. peak number where peak numbers can have arbitrary offset due to unknown data taking thresholds.
@@ -575,8 +575,12 @@ class MPPCLines:
         board = self.mppc_lines[0].feb_id
         channel = self.mppc_lines[0].ch
         preamp_gain = self.mppc_lines[0].preamp_gain
-        self.plot_line_group(self.mppc_lines, None, os.path.join(outpn, 'before_peak_rearrangement_b{}c{}_preamp_gain{}.png'.format(board, channel, preamp_gain)))
-        self.plot_line_group(self.enumerated_lines, self.centroid_intersection_points, os.path.join(outpn, 'after_peak_rearrangement_b{}c{}_preamp_gain{}.png'.format(board, channel, preamp_gain)))
+        if not outpn is None:
+            self.plot_line_group(self.mppc_lines, None, os.path.join(outpn, 'before_peak_rearrangement_b{}c{}_preamp_gain{}.png'.format(board, channel, preamp_gain)))
+            self.plot_line_group(self.enumerated_lines, self.centroid_intersection_points, os.path.join(outpn, 'after_peak_rearrangement_b{}c{}_preamp_gain{}.png'.format(board, channel, preamp_gain)))
+        else:
+            self.plot_line_group(self.mppc_lines, None)
+            self.plot_line_group(self.enumerated_lines, self.centroid_intersection_points)
 
         # write to database
         outfpn = 'processed_data/gain_database.csv'
@@ -742,7 +746,7 @@ class MPPCLines:
             plt.show()
         plt.close()
     
-    def plot_line_group(self, lines, p_cent, outfpn):
+    def plot_line_group(self, lines, p_cent=None, outfpn=None):
         # plot points for each line
         random.seed(100)
         for line in lines:
@@ -757,17 +761,20 @@ class MPPCLines:
             xmin = -line.coeff[1]/line.coeff[0]
             fitx = np.linspace(xmin, xmax, 100)
             fity = line.coeff[0]*fitx + line.coeff[1]
-            plt.plot(fitx, fity, '--', alpha=.7, color=rgb, label='{} V'.format(line.voltage))
+            plt.plot(fitx, fity, '--', alpha=.7, color=rgb, label='{} V'.format(line.bias_voltage))
         if p_cent:
             xx = float(p_cent.x)
             yy = float(p_cent.y)
             plt.plot(xx, yy, 'X', color='r')
             plt.annotate('({:.2f},{:.2f})'.format(xx, yy), xy=(xx, yy), xytext=(xx+0.35, yy-30))
         plt.legend()
-        plt.xlabel('PE ID')
+        plt.xlabel('photoelectron peak ID')
         plt.ylabel('ADC')
-        easy_save_to(plt, outfpn)
-        plt.close()
+        if not outfpn is None:
+            easy_save_to(plt, outfpn)
+            plt.close()
+        else:
+            plt.show()
     
     def save_breakdowns(self, outfpn):
         # if file exists, read it into a dataframe;
