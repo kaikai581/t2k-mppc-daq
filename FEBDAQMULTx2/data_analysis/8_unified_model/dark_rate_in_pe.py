@@ -17,11 +17,14 @@ from glob import glob
 import argparse
 
 def assemble_calib_filenames():
-    with open(args.calib_file_paths) as f:
-        content = f.readlines()
-    # you may also want to remove whitespace characters like `\n` at the end of each line
-    content = [x.strip() for x in content]
-    content = [glob(os.path.join(p, '*ch{}*.root'.format(args.channel)))[0] for p in content]
+    if type(args.calib_file_paths) == list:
+        content = args.calib_file_paths
+    else:
+        with open(args.calib_file_paths) as f:
+            content = f.readlines()
+            # you may also want to remove whitespace characters like `\n` at the end of each line
+            content = [x.strip() for x in content]
+            content = [glob(os.path.join(p, '*ch{}*.root'.format(args.channel)))[0] for p in content]
     return content
 
 def assemble_dark_rate_filenames():
@@ -36,12 +39,12 @@ def get_calibration_threshold(fn):
 if __name__ == '__main__':
     # command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('-f', '--calib_file_paths', type=str, default='calib_paths/thr205.txt')
+    parser.add_argument('-f', '--calib_file_paths', type=str, nargs='*', default='calib_paths/thr205.txt')
     parser.add_argument('-b', '--board', type=int, default=1)
     parser.add_argument('-c', '--channel', type=int, default=0)
-    parser.add_argument('-d', '--dark_rate_file_path', type=str, nargs='*', default='../data/root/dark/20210203_volt58_ch32-63_feb170')
+    parser.add_argument('-d', '--dark_rate_file_path', type=str, default='../data/root/dark/20210203_volt58_ch32-63_feb170')
     parser.add_argument('-ph', '--pcb_half', type=int, default=None)
-    parser.add_argument('-p', '--prominence', type=int, default=50)
+    parser.add_argument('-p', '--prominence', type=int, default=100)
     parser.add_argument('--output_path', type=str, default=os.path.join(os.path.dirname(__file__), 'plots', os.path.basename(__file__).rstrip('.py')))
     args = parser.parse_args()
     outpn = args.output_path
@@ -67,4 +70,6 @@ if __name__ == '__main__':
     # print(my_pn.df_3d_pts)
 
     my_scan = software_threshold_scan.peak_number_dataframe(dark_rate_fpns, my_pn.df_3d_pts, calib_thr=calib_thr, pcb_half=1)
+    my_scan.plot_rate_and_diff_rate_vs_dac(filtered=False)
+    my_scan.plot_rate_and_diff_rate_vs_dac(filtered=True)
     my_scan.dac_to_adc_and_pe()
