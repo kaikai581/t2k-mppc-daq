@@ -181,8 +181,11 @@ class fitting_algorithm(common_tools.MPPCLines):
         sns_plot.tight_layout()
 
         # save raw pedestal ADC plot
-        common_tools.easy_save_to(plt, os.path.join(self.outpn, 'raw_pedestal_adc.png'))
-        plt.close()
+        if self.outpn:
+            common_tools.easy_save_to(plt, os.path.join(self.outpn, 'raw_pedestal_adc.png'))
+            plt.close()
+        else:
+            plt.show()
 
         # check if the rough_pedestal_adc column exists
         if not 'rough_pedestal_adc' in self.df_3d_pts.columns: return
@@ -196,8 +199,11 @@ class fitting_algorithm(common_tools.MPPCLines):
         sns_plot.tight_layout()
 
         # save raw pedestal ADC plot
-        common_tools.easy_save_to(plt, os.path.join(self.outpn, 'optimal_pedestal_adc.png'))
-        plt.close()
+        if self.outpn:
+            common_tools.easy_save_to(plt, os.path.join(self.outpn, 'optimal_pedestal_adc.png'))
+            plt.close()
+        else:
+            plt.show()
     
     def plot_adc_vs_peak_number(self):
         '''
@@ -237,8 +243,11 @@ class fitting_algorithm(common_tools.MPPCLines):
         plt.legend()
         plt.xlabel('photoelectron')
         plt.ylabel('ADC')
-        common_tools.easy_save_to(plt, os.path.join(self.outpn, 'adc_vs_pe_best_fit.png'))
-        plt.close()
+        if self.outpn:
+            common_tools.easy_save_to(plt, os.path.join(self.outpn, 'adc_vs_pe_best_fit.png'))
+            plt.close()
+        else:
+            plt.show()
 
     def refit_physics_parameters(self):
         '''

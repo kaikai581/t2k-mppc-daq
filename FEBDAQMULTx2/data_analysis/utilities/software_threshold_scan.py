@@ -142,40 +142,43 @@ class adc_scan:
         # clear canvas
         plt.close()
 
-    def plot_rate_and_diff_rate_vs_dac(self):
+    def plot_rate_and_diff_rate_vs_dac(self, filtered=True):
         '''
         Plot dark rate vs DAC and differentiated dark rate vs DAC sharing the same x axis.
         '''
         
         fig, ax = plt.subplots(nrows=2, ncols=1)
-        ax[0].scatter(self.df_rate_scan['dac'], self.df_rate_scan['log_rate'], s=3, label='raw')
-        ax[0].scatter(self.df_rate_scan['dac'], self.df_rate_scan['log_rate_savgol'], s=3, c='r', label='Savitzky–Golay filtered')
-        ax[0].set_ylabel(r'$\log_{10}(rate/Hz)$')
-        ax[0].legend()
 
-        # using
-        # ref: https://stackoverflow.com/questions/56486999/savitzky-golay-filtering-giving-incorrect-derivative-in-1d
-        # ref: https://riptutorial.com/scipy/example/15878/using-a-savitzky-golay-filter
-        ax[1].scatter(self.df_rate_scan['dac'], self.df_rate_scan['diff_log_rate_savgol'], s=3, label='raw')
-        ax[1].scatter(self.df_rate_scan['dac'], self.df_rate_scan['diff_log_rate_savgol_savgol'], s=3, c='r', label='Savitzky–Golay filtered')
-        ax[1].set_xlabel('DAC')
-        ax[1].set_ylabel(r'$-\frac{d}{dx}\log_{10}(rate/Hz)$')
-        ax[1].legend()
+        if filtered:
+            ax[0].scatter(self.df_rate_scan['dac'], self.df_rate_scan['log_rate'], s=3, label='raw')
+            ax[0].scatter(self.df_rate_scan['dac'], self.df_rate_scan['log_rate_savgol'], s=3, c='r', label='Savitzky–Golay filtered')
+            ax[0].set_ylabel(r'$\log_{10}(rate/Hz)$')
+            ax[0].legend()
 
-        # draw vertical line on all inflection points and all axes
-        for axn in ax:
-            for x_inflec in self.df_rate_scan[self.df_rate_scan.is_inflection]['dac']:
-                axn.axvline(x=x_inflec, color='g', linestyle='--')
+            # using
+            # ref: https://stackoverflow.com/questions/56486999/savitzky-golay-filtering-giving-incorrect-derivative-in-1d
+            # ref: https://riptutorial.com/scipy/example/15878/using-a-savitzky-golay-filter
+            ax[1].scatter(self.df_rate_scan['dac'], self.df_rate_scan['diff_log_rate_savgol'], s=3, label='raw')
+            ax[1].scatter(self.df_rate_scan['dac'], self.df_rate_scan['diff_log_rate_savgol_savgol'], s=3, c='r', label='Savitzky–Golay filtered')
+            ax[1].set_xlabel('DAC')
+            ax[1].set_ylabel(r'$-\frac{d}{dx}\log_{10}(rate/Hz)$')
+            ax[1].legend()
 
+            # draw vertical line on all inflection points and all axes
+            for axn in ax:
+                for x_inflec in self.df_rate_scan[self.df_rate_scan.is_inflection]['dac']:
+                    axn.axvline(x=x_inflec, color='g', linestyle='--')
+
+        else:
+            # Using seaborn to make plots
+            sns.scatterplot(x='dac', y='rate', data=self.df_rate_scan, ax=ax[0], palette=['red'])
+            ax[0].set_yscale('log')
+            sns.scatterplot(x='dac', y='diff_log_rate', data=self.df_rate_scan, ax=ax[1], palette=['blue'])
+            
         # second derivative does not do any good
         # y_der2 = scipy.signal.savgol_filter(self.df_rate_scan['log_rate'], 11, 3, deriv=2, delta=dx)
         # ax[2].scatter(self.df_rate_scan['dac'], y_der2, s=3)
         # ax[2].set_ylabel(r'$d^2\log_{10}(rate/Hz)/dx^2$')
-
-        # Using seaborn to make plots
-        # sns.scatterplot(x='dac', y='rate', data=self.df_rate_scan, ax=ax[0], palette=['red'])
-        # ax[0].set_yscale('log')
-        # sns.scatterplot(x='dac', y='diff_log_rate', data=self.df_rate_scan, ax=ax[1], palette=['blue'])
 
         # spline does not work well.
         # spl = UnivariateSpline(self.df_rate_scan.dac, self.df_rate_scan.log_rate, k=4, s=0)
@@ -184,7 +187,10 @@ class adc_scan:
 
         fig.tight_layout()  # otherwise the right y-label is slightly clipped
 
-        outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'.png')
+        if filtered:
+            outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_filtered.png')
+        else:
+            outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'.png')
         common_tools.easy_save_to(plt, outfpn)
 
         # clear canvas
@@ -196,12 +202,13 @@ class peak_number_dataframe:
     This class has the same function as the adc_scan class.
     However, it uses a dataframe input for the correct peak numbering.
     '''
-    def __init__(self, dark_rate_fpns, df_led_calib_file, calib_thr, savgol_npts=11, prom=100, pc_lth=0.7, pc_rth=1.4, pcb_half=None):
+    def __init__(self, dark_rate_fpns, df_led_calib_file, calib_thr, savgol_npts=11, prom=100, pc_lth=0.7, pc_rth=1.4, pcb_half=None, z_outlier=2, outpn='auto'):
         '''
         Constructor calculates dark rate as a function of threshold and loads a calibration LED spectrum.
         
         dark_rate_fpns   : a list or a string with wildcards of the threshold scan files
         df_led_calib_file: a LED file with the same bias voltage and preamp gain for photoelectron calibration
+        z_outlier        : threshold in z score beyond which rate points are regarded as outliers
         '''
         # query and store the uproot veresion
         self.uproot_ver = common_tools.get_uproot_version()
@@ -251,6 +258,8 @@ class peak_number_dataframe:
         self.df_rate_scan['diff_log_rate_savgol'] = -scipy.signal.savgol_filter(self.df_rate_scan['log_rate'], savgol_npts, 3, deriv=1, delta=dx)
         self.df_rate_scan['log_rate_savgol'] = scipy.signal.savgol_filter(self.df_rate_scan['log_rate'], savgol_npts, 3, deriv=0, delta=dx)
         self.df_rate_scan['diff_log_rate_savgol_savgol'] = -scipy.signal.savgol_filter(self.df_rate_scan['log_rate_savgol'], savgol_npts, 3, deriv=1, delta=dx)
+        # it is found that sometimes there are measured points so eccentric that manual removal is required
+        self.remove_outliers(z_outlier=z_outlier)
         # finding local minima
         # ref: https://stackoverflow.com/questions/48023982/pandas-finding-local-max-and-min
         minarg = scipy.signal.find_peaks(self.df_rate_scan['diff_log_rate_savgol_savgol'], height=self.df_rate_scan['diff_log_rate_savgol'].max()*.4)
@@ -268,7 +277,10 @@ class peak_number_dataframe:
         self.calib_thr = float(calib_thr)
 
         # store output folder
-        self.outdir = os.path.join('plots', os.path.dirname(self.dark_rate_fpns[0]).split('/')[-1])
+        if outpn == 'auto':
+            self.outdir = os.path.join('plots', os.path.dirname(self.dark_rate_fpns[0]).split('/')[-1])
+        else:
+            self.outdir = outpn
 
     def dac_to_adc_and_pe(self, force_first_peak_number=None, outpn=None):
         '''
@@ -293,6 +305,9 @@ class peak_number_dataframe:
         # the number of found inflection points.
         # The element of the new list has the first_peak_number value at the index at which the value in the inflection list is the first element larger than LED file's threshold.
         df = self.df_rate_scan[self.df_rate_scan.is_inflection]
+        if len(df['dac']) <= 0:
+            print('No inflection point is found. Abort...')
+            sys.exit(-1)
         idx_first_peak = next(i for i, v in enumerate(df['dac']) if v > self.calib_thr)
         pe_numbers = [i-(idx_first_peak-first_peak_number) for i in range(len(df))]
         m, b = np.polyfit(df['dac'], pe_numbers, 1)
@@ -306,11 +321,95 @@ class peak_number_dataframe:
         plt.ylabel(r'$\log_{10}(rate/Hz)$')
         plt.legend()
 
-        if outpn is None:
+        if self.outdir:
             outfpn = os.path.join(self.outdir, 'calibrated_dark_rate_scan.png')
-        else:
-            outfpn = os.path.join(outpn, 'calibrated_dark_rate_scan.png')
-        common_tools.easy_save_to(plt, outfpn)
+            common_tools.easy_save_to(plt, outfpn)
 
-        # clear canvas
-        plt.close()
+            # clear canvas
+            plt.close()
+        else:
+            plt.show()
+
+    def plot_rate_and_diff_rate_vs_dac(self, filtered=True):
+        '''
+        Plot dark rate vs DAC and differentiated dark rate vs DAC sharing the same x axis.
+        '''
+        
+        fig, ax = plt.subplots(nrows=2, ncols=1)
+
+        if filtered:
+            ax[0].scatter(self.df_rate_scan['dac'], self.df_rate_scan['log_rate'], s=3, label='raw')
+            ax[0].plot(self.df_rate_scan['dac'], self.df_rate_scan['log_rate_savgol'], 'r--', label='Savitzky–Golay filtered')
+            ax[0].set_ylabel(r'$\log_{10}(rate/Hz)$')
+            ax[0].legend()
+
+            # using
+            # ref: https://stackoverflow.com/questions/56486999/savitzky-golay-filtering-giving-incorrect-derivative-in-1d
+            # ref: https://riptutorial.com/scipy/example/15878/using-a-savitzky-golay-filter
+            ax[1].scatter(self.df_rate_scan['dac'], self.df_rate_scan['diff_log_rate_savgol'], s=3, label='raw')
+            ax[1].plot(self.df_rate_scan['dac'], self.df_rate_scan['diff_log_rate_savgol_savgol'], 'r--', label='Savitzky–Golay filtered')
+            ax[1].set_xlabel('DAC')
+            ax[1].set_ylabel(r'$-\frac{d}{dx}\log_{10}(rate/Hz)$')
+            ax[1].legend()
+
+            # draw vertical line on all inflection points and all axes
+            for axn in ax:
+                for x_inflec in self.df_rate_scan[self.df_rate_scan.is_inflection]['dac']:
+                    axn.axvline(x=x_inflec, color='g', linestyle='--')
+
+        else:
+            # Using seaborn to make plots
+            sns.scatterplot(x='dac', y='rate', data=self.df_rate_scan, ax=ax[0], palette=['red'])
+            ax[0].set_yscale('log')
+            sns.scatterplot(x='dac', y='diff_log_rate', data=self.df_rate_scan, ax=ax[1], palette=['blue'])
+
+        fig.tight_layout()  # otherwise the right y-label is slightly clipped
+
+        if self.outdir:
+            if filtered:
+                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_filtered.png')
+            else:
+                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'.png')
+            common_tools.easy_save_to(plt, outfpn)
+
+            # clear canvas
+            plt.close()
+        else:
+            plt.show()
+    
+    def plot_rate_vs_dac(self, filtered=True):
+        '''
+        Plot dark rate vs DAC.
+        '''
+
+        if filtered:
+            plt.scatter(self.df_rate_scan['dac'], self.df_rate_scan['log_rate_savgol'], s=3, label='raw')
+        else:
+            plt.scatter(self.df_rate_scan['dac'], self.df_rate_scan['log_rate'], s=3, label='raw')
+        
+        plt.ylabel(r'$\log_{10}(rate/Hz)$')
+        plt.tight_layout()
+
+        if self.outdir:
+            if filtered:
+                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_rate_filtered.png')
+            else:
+                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_rate.png')
+            common_tools.easy_save_to(plt, outfpn)
+
+            # clear canvas
+            plt.close()
+        else:
+            plt.show()
+
+    
+    def remove_outliers(self, z_outlier):
+        '''
+        Remove outlier data points based on the diff_log_rate array.
+        '''
+
+        sigma = self.df_rate_scan['diff_log_rate'].std()
+        median = self.df_rate_scan['diff_log_rate'].median()
+        normalized_list = (self.df_rate_scan['diff_log_rate'] - median)/sigma
+        
+        self.df_rate_scan = self.df_rate_scan[np.abs(normalized_list) < z_outlier]
