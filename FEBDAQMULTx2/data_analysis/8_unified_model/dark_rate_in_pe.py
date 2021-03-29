@@ -15,10 +15,13 @@ import software_threshold_scan
 
 from glob import glob
 import argparse
+# avoid x11 error
+import matplotlib
+matplotlib.use('Agg')
 
 def assemble_calib_filenames():
     with open(args.calib_file_paths) as f:
-        content = f.readlines()
+        content = [line for line in f.readlines() if line.strip()]
     # you may also want to remove whitespace characters like `\n` at the end of each line
     content = [x.strip() for x in content]
     content = [glob(os.path.join(p, '*ch{}*.root'.format(args.channel)))[0] for p in content]
@@ -41,7 +44,8 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--channel', type=int, default=0)
     parser.add_argument('-d', '--dark_rate_file_path', type=str, nargs='*', default='../data/root/dark/20210203_volt58_ch32-63_feb170')
     parser.add_argument('-ph', '--pcb_half', type=int, default=None)
-    parser.add_argument('-p', '--prominence', type=int, default=50)
+    # It is found that using a prominence of 50 leads to instability of the peak numbering algorithm!
+    parser.add_argument('-p', '--prominence', type=int, default=100)
     parser.add_argument('--output_path', type=str, default=os.path.join(os.path.dirname(__file__), 'plots', os.path.basename(__file__).rstrip('.py')))
     args = parser.parse_args()
     outpn = args.output_path
@@ -67,4 +71,5 @@ if __name__ == '__main__':
     # print(my_pn.df_3d_pts)
 
     my_scan = software_threshold_scan.peak_number_dataframe(dark_rate_fpns, my_pn.df_3d_pts, calib_thr=calib_thr, pcb_half=1)
-    my_scan.dac_to_adc_and_pe()
+    print(my_scan.df_rate_scan)
+    my_scan.dac_to_adc_and_pe(outpn=outpn)

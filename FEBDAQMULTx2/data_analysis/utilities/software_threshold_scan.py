@@ -270,7 +270,7 @@ class peak_number_dataframe:
         # store output folder
         self.outdir = os.path.join('plots', os.path.dirname(self.dark_rate_fpns[0]).split('/')[-1])
 
-    def dac_to_adc_and_pe(self, force_first_peak_number=None):
+    def dac_to_adc_and_pe(self, force_first_peak_number=None, outpn=None):
         '''
         Calculate the linear parameters for DAC to ADC conversion.
         Check whether the pe numbering algorithm is already applied.
@@ -306,7 +306,10 @@ class peak_number_dataframe:
         plt.ylabel(r'$\log_{10}(rate/Hz)$')
         plt.legend()
 
-        outfpn = os.path.join(self.outdir, 'calibrated_dark_rate_scan.png')
+        if outpn is None:
+            outfpn = os.path.join(self.outdir, 'calibrated_dark_rate_scan.png')
+        else:
+            outfpn = os.path.join(outpn, 'calibrated_dark_rate_scan.png')
         common_tools.easy_save_to(plt, outfpn)
 
         # clear canvas
