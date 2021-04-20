@@ -188,9 +188,9 @@ class adc_scan:
         fig.tight_layout()  # otherwise the right y-label is slightly clipped
 
         if filtered:
-            outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_filtered.png')
+            outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_filtered_ch{}.png'.format(self.ch))
         else:
-            outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'.png')
+            outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_ch{}.png'.format(self.ch))
         common_tools.easy_save_to(plt, outfpn)
 
         # clear canvas
@@ -269,6 +269,8 @@ class peak_number_dataframe:
         self.feb_id = df_metadata[df_metadata.isTrigger == True]['board'].iloc[0]
         # store channel number
         self.ch = df_metadata[df_metadata.isTrigger == True]['channel'].iloc[0]
+        # store which half of the pcb
+        self.pcb_half = pcb_half
 
         # store the peak number dataframe
         self.df_peak_number = df_led_calib_file
@@ -281,6 +283,28 @@ class peak_number_dataframe:
             self.outdir = os.path.join('plots', os.path.dirname(self.dark_rate_fpns[0]).split('/')[-1])
         else:
             self.outdir = outpn
+        
+        # store calibrated results
+        summary_outpn = 'processed_data'
+        fn = os.path.basename(self.dark_rate_fpns[0]).split('_')
+        fn = fn[0] + '_' + fn[1]
+        self.summary_fpn = os.path.join(summary_outpn, fn+'.csv')
+        if not os.path.exists(summary_outpn):
+            os.makedirs(summary_outpn)
+        if os.path.exists(self.summary_fpn):
+            self.df_calibrated = pd.read_csv(self.summary_fpn, index_col=None)
+        else:
+            self.df_calibrated = pd.DataFrame(columns=['pcb_half', 'channel', 'rate @ 1.5 pe', 'rate_dac_210', 'rate_dac_230'])
+        print('--------- rate at DAC of interest:')
+        print('dac 210 & 230', self.df_rate_scan[self.df_rate_scan.dac == 210].iloc[0]['rate'], self.df_rate_scan[self.df_rate_scan.dac == 230].iloc[0]['rate'])
+
+    def careful_log(self, my_arr):
+        '''
+        It seems that the logarithm of some data points is NaN.
+        Deal with it carefully.
+        '''
+        self.df_rate_scan = self.df_rate_scan[my_arr > 0]
+        return np.log10(my_arr)
 
     def dac_to_adc_and_pe(self, force_first_peak_number=None, outpn=None):
         '''
@@ -307,6 +331,9 @@ class peak_number_dataframe:
         df = self.df_rate_scan[self.df_rate_scan.is_inflection]
         if len(df['dac']) <= 0:
             print('No inflection point is found. Abort...')
+            # save a nonsensical number to signal this situation
+            self.df_calibrated.loc[len(self.df_calibrated)] = [int(self.pcb_half), int(self.ch), -1, -1, -1]
+            self.df_calibrated.to_csv(self.summary_fpn, index=False)
             sys.exit(-1)
         idx_first_peak = next(i for i, v in enumerate(df['dac']) if v > self.calib_thr)
         pe_numbers = [i-(idx_first_peak-first_peak_number) for i in range(len(df))]
@@ -329,6 +356,11 @@ class peak_number_dataframe:
             plt.close()
         else:
             plt.show()
+        
+        # save calibrated data to file
+        print([int(self.pcb_half), int(self.ch), np.power(10, np.interp(1.5, self.df_rate_scan['pe'], self.df_rate_scan['log_rate_savgol'])), self.df_rate_scan[self.df_rate_scan.dac == 210].iloc[0]['rate'], self.df_rate_scan[self.df_rate_scan.dac == 230].iloc[0]['rate']])
+        self.df_calibrated.loc[len(self.df_calibrated)] = [int(self.pcb_half), int(self.ch), np.power(10, np.interp(1.5, self.df_rate_scan['pe'], self.df_rate_scan['log_rate_savgol'])), self.df_rate_scan[self.df_rate_scan.dac == 210].iloc[0]['rate'], self.df_rate_scan[self.df_rate_scan.dac == 230].iloc[0]['rate']]
+        self.df_calibrated.to_csv(self.summary_fpn, index=False)
 
     def plot_rate_and_diff_rate_vs_dac(self, filtered=True):
         '''
@@ -367,9 +399,9 @@ class peak_number_dataframe:
 
         if self.outdir:
             if filtered:
-                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_filtered.png')
+                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_filtered_ch{}.png'.format(self.ch))
             else:
-                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'.png')
+                outfpn = os.path.join(self.outdir, os.path.basename(self.dark_rate_fpns[0]).strip('.root')+'_ch{}.png'.format(self.ch))
             common_tools.easy_save_to(plt, outfpn)
 
             # clear canvas

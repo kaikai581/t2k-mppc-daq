@@ -66,3 +66,4 @@ if __name__ == '__main__':
         outfpn = '{}/gain_vs_ch_{}_color_feb.png'.format(args.output_path, gain)
 
     common_tools.easy_save_to(plt, outfpn)
+    print('Output figure to', outfpn)
