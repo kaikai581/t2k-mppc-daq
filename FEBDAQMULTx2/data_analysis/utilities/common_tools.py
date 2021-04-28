@@ -626,7 +626,7 @@ class MPPCLines:
                     x.append(line.bias_voltage)
                     y.append(line.gainfitp[0])
                     cur_yerr = math.sqrt(line.gainfitpcov[0][0]) # avoid divide by zero issue when fitting
-                    yerr.append(cur_yerr if cur_yerr > 0 else 0.01)
+                    yerr.append(cur_yerr)
                     # store intermediate plots
                     line.show_spectrum_and_fit(outpn, outfn)
         plt.errorbar(x, y, yerr=yerr, fmt='o', markersize=3)
@@ -640,9 +640,13 @@ class MPPCLines:
         plt.title('FEB{} ch{}\n{}'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, par_str), fontsize=10)
 
         # make a linear fit to extract the breakdown voltage
-        slope = (y[1]-y[0])/(x[1]-x[0]) if len(y) >= 2 else 10
+        slopes = [(y[i+1]-y[i])/(x[i+1]-x[i]) for i in range(len(y)-1)]
+        slope = sum(slopes)/len(slopes) if len(slopes) > 0 else 10
+        # slope = (y[1]-y[0])/(x[1]-x[0]) if len(y) >= 2 else 10
         intercept = 50
         p_init = np.array([slope, intercept])
+        min_error = min([val for val in yerr if val > 0])
+        yerr = [min_error if val == 0 else val for val in yerr]
         try:
             self.fitp, self.fitpcov = optimization.curve_fit(breakdown_voltage_linear_function, x, y, p_init, sigma=yerr)
         except RuntimeError as e:
