@@ -22,7 +22,7 @@ import sys
 import uproot
 
 class MPPCLine:
-    def __init__(self, infpn, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False, pcb_half=None):
+    def __init__(self, infpn, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False, pcb_half=None, exclude_first_peak=False):
         '''
         The constructor is responsible for finding peak positions given
         a filename and a channel ID.
@@ -103,6 +103,8 @@ class MPPCLine:
         # record the fit parameters from a function fit to the ADC spectrum
         self.fitp = None
         self.fitpcov = None
+        # record the exclude first peak option
+        self.exclude_first_peak = exclude_first_peak
 
         # select data of the specified board
         self.df_1b = df[df['feb_num'] == feb_id]
@@ -126,6 +128,10 @@ class MPPCLine:
         if verbose:
             print('Peak ADCs:\n', self.peak_adcs)
         self.points = [Point2D(i, self.peak_adcs[i]) for i in range(len(self.peak_adcs))]
+        # 20210505 now the class can optionally exclude the first identified peak to see
+        # the effect of the pedestal.
+        if exclude_first_peak:
+            self.points = [Point2D(i-1, self.peak_adcs[i]) for i in range(1, len(self.peak_adcs))]
 
         # fit a line to the points
         if len(self.peaks) > 1:
@@ -215,7 +221,7 @@ class MPPCLine:
         plt.ylabel('count')
         plt.title('FEB{} ch{}\n{}'.format(self.feb_id, self.ch, self.get_parameter_string()))
         plt.legend()
-        plt.annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(self.fitp[1],math.sqrt(self.fitpcov[1][1])), xy=(0.5, 0.5), xycoords='axes fraction')
+        plt.annotate(r'total gain={:.2f}$\pm${:.2f} ADC/PE'.format(self.fitp[1], math.sqrt(self.fitpcov[1][1]) if self.fitpcov[1][1] > 0 else 0), xy=(0.5, 0.5), xycoords='axes fraction')
         if save_fpn:
             easy_save_to(plt, save_fpn)
         else:
@@ -491,6 +497,8 @@ class MPPCLine:
         if savepn:
             if not savefn:
                 savefn = os.path.basename(self.infpn.replace('.root', 'voffset{}.png'.format(self.voltage_offset)))
+            if self.exclude_first_peak:
+                savefn = savefn.replace('.png', '_first_peak_removed.png')
             outfpn = os.path.join(savepn, savefn)
             easy_save_to(plt, outfpn)
         else:
@@ -504,11 +512,11 @@ class MPPCLine:
         return 0.
 
 class MPPCLines:
-    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False, pcb_half=None):
+    def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False, pcb_half=None, exclude_first_peak=False):
         '''
         Given a set of input root files, construct the group of MPPC lines.
         '''
-        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose, pcb_half) for infpn in infpns]
+        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose, pcb_half, exclude_first_peak) for infpn in infpns]
         self.voltage_offset = voltage_offset
         # result containers
         self.centroid_intersection_points = None
@@ -522,6 +530,8 @@ class MPPCLines:
         self.feb_id = feb_id
         # store channel id
         self.ch = ch
+        # store excluding the first peak line fit
+        self.exclude_first_peak = exclude_first_peak
 
     def average_distance(self, z, *params):
         shifted_lines = copy.deepcopy(params)
@@ -602,7 +612,7 @@ class MPPCLines:
                     int_pts.append(pt[0])
         return int_pts
 
-    def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True, vset=False):
+    def fit_total_gain_vs_bias_voltage(self, outpn=None, use_fit_fun=True, vset=False, remove_outliers=False, exclude_first_peak=False):
         '''
         This method takes a set of measurements with various bias voltages,
         plots total gain vs. bias voltage, fits a line, and takes the
@@ -618,10 +628,14 @@ class MPPCLines:
                 if outpn:
                     outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}_voffset{}.png'.format(line.feb_id, line.ch, line.voltage_offset)
                 if use_fit_fun:
-                    if line.fit_adc_spectrum(gaussian_sum_fit_func, outfpn) > 0:
-                        x.append(line.bias_voltage)
-                        y.append(line.fitp[1])
-                        yerr.append(math.sqrt(line.fitpcov[1][1]))
+                    if outpn:
+                        outfn = os.path.basename(line.infpn).rstrip('.root')+'_b{}c{}_voffset{}_fit_spec_shape.png'.format(line.feb_id, line.ch, line.voltage_offset)
+                    if line.fit_adc_spectrum(gaussian_sum_fit_func, os.path.join(outpn, outfn)) > 0:
+                        cur_yerr = math.sqrt(line.fitpcov[1][1]) if line.fitpcov[1][1] > 0 else 0
+                        if cur_yerr < line.fitp[1]:
+                            x.append(line.bias_voltage)
+                            y.append(line.fitp[1])
+                            yerr.append(cur_yerr)
                 else:
                     x.append(line.bias_voltage)
                     y.append(line.gainfitp[0])
@@ -649,6 +663,19 @@ class MPPCLines:
         yerr = [min_error if val == 0 else val for val in yerr]
         try:
             self.fitp, self.fitpcov = optimization.curve_fit(breakdown_voltage_linear_function, x, y, p_init, sigma=yerr)
+            # optionally remove outliers
+            if remove_outliers:
+                diffs = [yi-(self.fitp[0]*xi+self.fitp[1]) for xi, yi in zip(x, y)]
+                diffs_median = np.median(diffs)
+                diffs_std = np.std(diffs)
+                z_score = np.array([np.abs((diff-diffs_median)/diffs_std) for diff in diffs])
+                x_temp = [x[i] for i in range(len(x)) if z_score[i] < 1]
+                if len(x_temp) > 1:
+                    x = x_temp
+                    y = [y[i] for i in range(len(y)) if z_score[i] < 1]
+                    yerr = [yerr[i] for i in range(len(yerr)) if z_score[i] < 1]
+                print('Z scores for the breakdown line fit:', z_score)
+                self.fitp, self.fitpcov = optimization.curve_fit(breakdown_voltage_linear_function, x, y, p_init, sigma=yerr)
         except RuntimeError as e:
             plt.close()
             return -1
@@ -657,7 +684,7 @@ class MPPCLines:
         vmin = vbd*.95
         xgain = np.linspace(vbd, vmax, 101)
         ygain = breakdown_voltage_linear_function(xgain, *self.fitp)
-        vbd_err = math.sqrt(self.fitpcov[1][1])
+        vbd_err = math.sqrt(self.fitpcov[1][1]) if self.fitpcov[1][1] > 0 else 0
         # plot the breakdown voltage line
         plt.xlim(left=vmin, right=vmax)
         plt.ylim(bottom=0)
@@ -674,7 +701,12 @@ class MPPCLines:
         if outpn:
             substrs = os.path.basename(self.mppc_lines[0].infpn).rstrip('.root').split('_')
             del substrs[1]
-            outfn = '_'.join(substrs) + '_b{}c{}_voffset{}.png'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, self.voltage_offset)
+            if not use_fit_fun:
+                outfn = '_'.join(substrs) + '_b{}c{}_voffset{}.png'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, self.voltage_offset)
+            else:
+                outfn = '_'.join(substrs) + '_b{}c{}_voffset{}_fit_spec_shape.png'.format(self.mppc_lines[0].feb_id, self.mppc_lines[0].ch, self.voltage_offset)
+            if self.exclude_first_peak:
+                outfn = outfn.replace('.png', '_first_peak_removed.png')
             outfpn = os.path.join(outpn, outfn)
             easy_save_to(plt, outfpn)
         else:
@@ -688,7 +720,7 @@ class MPPCLines:
 
         return 1
     
-    def fit_total_gain_vs_preamp_gain(self, outpn=None, use_fit_fun=True):
+    def fit_total_gain_vs_preamp_gain(self, outpn=None, use_fit_fun=True, exclude_first_peak=False):
         '''
         This method takes a set of measurements with various preamp gains,
         plots total gain vs. preamp gain, fits a line, and takes the
@@ -796,7 +828,7 @@ class MPPCLines:
         new_data['board'] = self.feb_id
         new_data['channel'] = self.ch
         new_data['breakdown_voltage'] = self.fitp[1]
-        new_data['breakdown_voltage_err'] = math.sqrt(self.fitpcov[1][1])
+        new_data['breakdown_voltage_err'] = math.sqrt(self.fitpcov[1][1]) if self.fitpcov[1][1] > 0 else -1
         new_data['total_gain_5V_over'] = self.fitp[0]*5
         new_data['r2'] = self.r2_gof
 

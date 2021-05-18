@@ -55,7 +55,7 @@ if __name__ == '__main__':
         fig, (ax_utokyo20, axhist, ax_table) = plt.subplots(ncols=3, sharey=True,
                                     gridspec_kw={"width_ratios" : [3,1,2], "wspace" : 0})
         ax_table.axis("off")
-        fig.set_size_inches(10, 5)    
+        fig.set_size_inches(10, 5)
         ax_utokyo20.scatter(x=my_utokyo_data.df_data['channel'], y=my_utokyo_data.df_data['Gain @ over_voltage=5V|Temp={}C'.format(temp)])
         ax_utokyo20.grid('both')
         ax_utokyo20.set_xlabel('channel')
