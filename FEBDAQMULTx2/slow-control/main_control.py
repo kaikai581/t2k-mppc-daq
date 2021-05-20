@@ -536,8 +536,12 @@ class Window(QWidget):
     
     def fgApplyAmpl(self):
         ampl = float(self.fgAmplEdit.text())
-        ch = int(self.fgChSel.currentText())
-        self.devFunGen.setAmplitude(ch, '{}'.format(ampl))
+        if self.fgChSel.currentText() != 'all':
+            ch = int(self.fgChSel.currentText())
+            self.devFunGen.setAmplitude(ch, '{}'.format(ampl))
+        else:
+            for ch in [1, 2]:
+                self.devFunGen.setAmplitude(ch, '{}'.format(ampl))
 
     def fgApplyFreq(self):
         freq = float(self.fgFreqEdit.text())
