@@ -37,9 +37,37 @@ class data_csv:
         g.tight_layout()
         g.fig.savefig(os.path.join(out_dir, outfn))
 
+    def compare_r2(self):
+        '''
+        Compare the R2 channel by channel from the three different methods.
+        1. Peak finding
+        2. Spectrum fit
+        3. Autocorrelation
+        '''
+        cols = ['position no.', 'R2 peak finding', 'R2 spectrum fit', 'R2 autocorrelation']
+        df = self.df[cols]
+        df = df.melt('position no.', var_name='methods',  value_name=r'$R^2$')
+        g = sns.relplot(x='position no.', y='$R^2$', hue='methods', data=df, kind='line', marker='o', height=6, aspect=12/6)
+
+        # make output directory
+        out_dir = os.path.join('plots', os.path.splitext(os.path.basename(__file__))[0])
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        
+        # save plot to file
+        outfn = 'R2_comparison.jpg'
+        g.tight_layout()
+        g.fig.savefig(os.path.join(out_dir, outfn))
+
+        # zoom in y-axis
+        g.set(ylim=(0.97, 1.001))
+        outfn = 'R2_comparison_zoom_in.jpg'
+        g.tight_layout()
+        g.fig.savefig(os.path.join(out_dir, outfn))
 
 if __name__ == '__main__':
     my_data = data_csv('data/20210517_mppc_summary_utokyo_pcb_lsu_measurements_feb136_feb13294.csv')
     print(my_data.df.columns)
     my_data.compare_hamamatsu_utokyo_lsu()
     my_data.compare_hamamatsu_utokyo_lsu(dac_offset=True)
+    my_data.compare_r2()

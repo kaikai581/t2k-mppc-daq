@@ -6,6 +6,7 @@ This script compares the breakdown voltage measurements of the UTokyo MPPC-PCB f
 from data_interface import utokyo_data, lsu_data
 from pandas.plotting import table
 from scipy import stats
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -19,13 +20,16 @@ def describe_helper(series):
     return keys, values
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--data_path', type=str, default='data/20210422_first_meeting')
+    args = parser.parse_args()
     # load utokyo measurements and lsu measurements of the LSU board
-    my_utokyo_data = utokyo_data('data/Utokyo_PCB_Measurement_For crschk_ .xlsx')
-    my_lsu_data = lsu_data('data/mppc_summary_utokyo_pcb_lsu_measurements.csv')
+    my_utokyo_data = utokyo_data(f'{args.data_path}/Utokyo_PCB_Measurement_For crschk_ .xlsx')
+    my_lsu_data = lsu_data(f'{args.data_path}/mppc_summary_utokyo_pcb_lsu_measurements.csv')
     # my_lsu_data = lsu_data('data/mppc_summary_lsu_pcb_lsu_measurements.xlsx')
 
     # make output folder
-    out_dir = 'plots'
+    out_dir = f'plots/{args.data_path}'
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 

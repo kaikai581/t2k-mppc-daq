@@ -174,7 +174,8 @@ class MPPCLine:
         '''
         Return a string of physical parameters for use as plots' title.
         '''
-        return f'PCB ch{ch%32+self.pcb_half*32}    date: {self.get_date()}\n' + r'V$_{{set}}$:{:.2f}V preamp gain:{} temperature:{:.2f}°C'.format(self.get_bias_voltage(), self.get_preamp_gain(ch), self.get_temperature()) + f'\nDAC:{self.get_threshold()} bias:{self.get_bias_regulation(ch)}'
+        pcb_ch = ch%32+self.pcb_half*32 if self.nboards == 1 else ch
+        return f'PCB ch{pcb_ch}    date: {self.get_date()}\n' + r'V$_{{set}}$:{:.2f}V preamp gain:{} temperature:{:.2f}°C'.format(self.get_bias_voltage(), self.get_preamp_gain(ch), self.get_temperature()) + f'\nDAC:{self.get_threshold()} bias:{self.get_bias_regulation(ch)}'
     
     def get_preamp_gain(self, ch=0):
         if not self.df_metadata.empty:

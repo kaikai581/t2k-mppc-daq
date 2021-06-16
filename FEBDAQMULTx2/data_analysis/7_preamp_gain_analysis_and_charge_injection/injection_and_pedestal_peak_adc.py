@@ -59,7 +59,10 @@ class peak_adc:
         file_atts = self.infn.rstrip('.root').split('_')
         for att in file_atts:
             if 'ch' in att:
-                self.inj_ch = int(att.lstrip('ch'))
+                try:
+                    self.inj_ch = int(att.lstrip('ch'))
+                except:
+                    continue
                 return
         self.inj_ch = -1
     
@@ -103,7 +106,8 @@ if __name__ == '__main__':
     df_calib = pd.DataFrame()
     df_calib['peak_adc'] = peak_adcs_inj.values()
     df_calib['ped_adc'] = peak_adcs_ped.values()
-    df_calib['calib_factor'] = [21.7096875e-3*100e-12/1.6e-19/(peak_adcs_inj[ch]-peak_adcs_ped[ch]) for ch in peak_adcs_inj.keys()]
+    # df_calib['calib_factor'] = [21.7096875e-3*100e-12/1.6e-19/(peak_adcs_inj[ch]-peak_adcs_ped[ch]) for ch in peak_adcs_inj.keys()]
+    df_calib['calib_factor'] = [28e-3*100e-12/1.6e-19/(peak_adcs_inj[ch]-peak_adcs_ped[ch]) for ch in peak_adcs_inj.keys()]
     
     # save results to file
     out_dir = 'processed_data'
