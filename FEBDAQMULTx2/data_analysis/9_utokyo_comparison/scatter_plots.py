@@ -76,11 +76,12 @@ class scatter_util:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-t', '--temperature', choices=[20, 25], default=20)
+    parser.add_argument('-d', '--data_path', type=str, default='data/20210422_first_meeting')
     args = parser.parse_args()
     temp = args.temperature
 
-    fnames_lsu_pcb = CorrVars('data/LSU_PCB_measured_by_UTokyo_crschk_.xlsx', 'data/mppc_summary_lsu_pcb_lsu_measurements.xlsx')
-    fnames_utokyo_pcb = CorrVars('data/Utokyo_PCB_Measurement_For crschk_ .xlsx', 'data/mppc_summary_utokyo_pcb_lsu_measurements.csv')
+    fnames_lsu_pcb = CorrVars(f'{args.data_path}/LSU_PCB_measured_by_UTokyo_crschk_.xlsx', f'{args.data_path}/mppc_summary_lsu_pcb_lsu_measurements.xlsx')
+    fnames_utokyo_pcb = CorrVars(f'{args.data_path}/Utokyo_PCB_Measurement_For crschk_ .xlsx', f'{args.data_path}/mppc_summary_utokyo_pcb_lsu_measurements.csv')
     varname_vbd = CorrVars(f'Utokyo measured Vbr|Temp={temp}C', f'LSU measured Vbr|Temp={temp}C')
     varname_gain = CorrVars(f'Gain @ over_voltage=5V|Temp={temp}C', f'MPPC Gain @ over_voltage=5V|Temp={temp}C')
 

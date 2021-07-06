@@ -105,6 +105,8 @@ class MPPCLine:
         self.fitpcov = None
         # record the exclude first peak option
         self.exclude_first_peak = exclude_first_peak
+        # option to use a spectral fit function
+        self.func = None
 
         # select data of the specified board
         self.df_1b = df[df['feb_num'] == feb_id]
@@ -180,6 +182,10 @@ class MPPCLine:
         return (self.gainfitp[0]/1.6e-19)/(adc_per_charge/1e-12)
 
     def fit_adc_spectrum(self, func, save_fpn=None):
+        '''
+        Use a function to fit the spectrum shape.
+        '''
+        self.func = func
         # notify the user what is being done
         print('Fitting', os.path.basename(self.infpn))
 
@@ -389,6 +395,65 @@ class MPPCLine:
         df_new = pd.DataFrame(columns=columns)
         df_new = df_new.append(new_data, ignore_index=True)
         df_new = df_new.set_index(columns[:6])
+        print('Saving gain to file:')
+        print(df_new.head())
+
+        # append new data if not exist
+        # otherwise overwrite
+        df = df.combine_first(df_new)
+
+        # Write to file
+        outpn = os.path.dirname(outfpn)
+        if not os.path.exists(outpn):
+            os.makedirs(outpn)
+        df.to_csv(outfpn, mode='w')
+
+    def save_gain_spec_fit(self, outfpn):
+        '''
+        Save the fit result of gain to file.
+        Function:
+        gaussian_sum_fit_func(x, N, gain, zero, noise, avnpe, excess, xtalk)
+
+        Parameters are stored in the member variables:
+        self.fitp for central values, and
+        self.fitpcov for uncertainties
+        '''
+        # if file exists, read it into a dataframe;
+        # otherwise create a new dataframe
+        columns = ['filename','board','channel','bias_voltage','gain','gain_err', 'preamp_gain', 'pcb_half','N','N_err','zero','zero_err','noise','noise_err','avnpe','avnpe_err','excess','excess_err','xtalk','xtalk_err']
+        if os.path.exists(outfpn):
+            df = pd.read_csv(outfpn)
+        else:
+            df = pd.DataFrame(columns=columns)
+        df = df.set_index(columns[:3])
+
+        # construct the data dictionary
+        new_data = dict()
+        new_data['filename'] = os.path.basename(self.infpn)
+        new_data['board'] = self.feb_id
+        new_data['channel'] = self.ch
+        new_data['bias_voltage'] = self.bias_voltage
+        new_data['gain'] = self.fitp[1]
+        new_data['gain_err'] = math.sqrt(self.fitpcov[1][1]) if self.fitpcov[1][1] > 0 else np.nan
+        new_data['preamp_gain'] = self.preamp_gain
+        new_data['pcb_half'] = self.pcb_half
+        new_data['N'] = self.fitp[0]
+        new_data['N_err'] = math.sqrt(self.fitpcov[0][0]) if self.fitpcov[0][0] > 0 else np.nan
+        new_data['zero'] = self.fitp[2]
+        new_data['zero_err'] = math.sqrt(self.fitpcov[2][2]) if self.fitpcov[2][2] > 0 else np.nan
+        new_data['noise'] = self.fitp[3]
+        new_data['noise_err'] = math.sqrt(self.fitpcov[3][3]) if self.fitpcov[3][3] > 0 else np.nan
+        new_data['avnpe'] = self.fitp[4]
+        new_data['avnpe_err'] = math.sqrt(self.fitpcov[4][4]) if self.fitpcov[4][4] > 0 else np.nan
+        new_data['excess'] = self.fitp[5]
+        new_data['excess_err'] = math.sqrt(self.fitpcov[5][5]) if self.fitpcov[5][5] > 0 else np.nan
+        new_data['xtalk'] = self.fitp[6]
+        new_data['xtalk_err'] = math.sqrt(self.fitpcov[6][6]) if self.fitpcov[6][6] > 0 else np.nan
+
+        # make a new dataframe out of the new data record
+        df_new = pd.DataFrame(columns=columns)
+        df_new = df_new.append(new_data, ignore_index=True)
+        df_new = df_new.set_index(columns[:3])
         print('Saving gain to file:')
         print(df_new.head())
 
@@ -851,7 +916,10 @@ class MPPCLines:
 
     def save_gains(self, outfpn):
         for mppc_line in self.mppc_lines:
-            mppc_line.save_gain(outfpn)
+            if not mppc_line.func == gaussian_sum_fit_func:
+                mppc_line.save_gain(outfpn)
+            else:
+                mppc_line.save_gain_spec_fit(outfpn)
 
 
 class PeakCleanup:

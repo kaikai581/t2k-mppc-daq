@@ -5,15 +5,19 @@ This script compares the MPPC gain measurements of the UTokyo MPPC-PCB from LSU 
 
 from data_interface import utokyo_data, lsu_data
 from pandas.plotting import table
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--data_path', type=str, default='data/20210422_first_meeting')
+    args = parser.parse_args()
     # load utokyo measurements and lsu measurements of the LSU board
-    my_utokyo_data = utokyo_data('data/Utokyo_PCB_Measurement_For crschk_ .xlsx')
+    my_utokyo_data = utokyo_data(f'{args.data_path}/Utokyo_PCB_Measurement_For crschk_ .xlsx')
     # my_lsu_data = lsu_data('data/mppc_summary_lsu_pcb_lsu_measurements.xlsx')
-    my_lsu_data = lsu_data('data/mppc_summary_utokyo_pcb_lsu_measurements.csv')
+    my_lsu_data = lsu_data(f'{args.data_path}/mppc_summary_utokyo_pcb_lsu_measurements.csv')
 
     # make output folder
     out_dir = 'plots'
