@@ -11,6 +11,36 @@ class data_csv:
     def __init__(self, infpn) -> None:
         self.df = pd.read_csv(infpn)
     
+    def compare_hamamatsu_lsu(self, dac_offset=False):
+        '''
+        Make breakdown voltage vs channel plots.
+        Plot different measurements on the same plot.
+        '''
+        if not dac_offset:
+            cols = ['position no.', 'Hamamatsu measured Vbr @ 25C', 'LSU Vbr spectrum shape fit|Temp=25C']
+        else:
+            cols = ['position no.', 'Hamamatsu measured Vbr @ 25C', 'LSU Vbr spectrum shape fit offset corrected|Temp=25C']
+
+        df = self.df[cols]
+        df = df.melt('position no.', var_name='measurements',  value_name='breakdown voltage (V)')
+        g = sns.relplot(x='position no.', y='breakdown voltage (V)', hue='measurements', data=df, kind='line', marker='o', height=6, aspect=12/6)
+
+        # make output directory
+        out_dir = os.path.join('plots', os.path.splitext(os.path.basename(__file__))[0])
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        
+        # save plot to file
+        outfn = 'compare_only_lsu_hamamatsu_{}dac_offset.jpg'.format('no_' if dac_offset == False else '')
+        g.tight_layout()
+        g.fig.savefig(os.path.join(out_dir, outfn))
+
+        g.fig.clf()
+        g = sns.histplot(data=df, x='breakdown voltage (V)', hue='measurements')
+        outfn = 'compare_hist_lsu_hamamatsu_{}dac_offset.jpg'.format('no_' if dac_offset == False else '')
+        g.figure.tight_layout()
+        g.figure.savefig(os.path.join(out_dir, outfn))
+    
     def compare_hamamatsu_utokyo_lsu(self, dac_offset=False):
         '''
         Make breakdown voltage vs channel plots.
@@ -70,4 +100,5 @@ if __name__ == '__main__':
     print(my_data.df.columns)
     my_data.compare_hamamatsu_utokyo_lsu()
     my_data.compare_hamamatsu_utokyo_lsu(dac_offset=True)
+    my_data.compare_hamamatsu_lsu(dac_offset=True)
     my_data.compare_r2()

@@ -40,8 +40,8 @@ if __name__ == '__main__':
     # my_wfms = ScopeWaveforms(infpns)
     # print(my_wfms.dfs[0])
 
-    old_wf = ScopeWaveform('scope_waveforms_data/old_pcb_50ohm_140131_130100000.csv')
-    new_wf = ScopeWaveform('scope_waveforms_data/new_pcb_50ohm_140131_130100000.csv')
+    old_wf = ScopeWaveform('old_pcb_50ohm_140131_130100000.csv')
+    new_wf = ScopeWaveform('new_pcb_50ohm_140131_130100000.csv')
     print(old_wf.df)
     print(new_wf.df)
     df = pd.merge(old_wf.df[['time', 'waveform_value']],
