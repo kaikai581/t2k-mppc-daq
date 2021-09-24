@@ -14,6 +14,7 @@ class segmented_rate:
     def __init__(self, infpns):
         self.dfs_raw = []
         self.df_rate = pd.DataFrame()
+        self.infpns = infpns
 
         # load all files into dataframes
         self.load_dfs(infpns)
@@ -59,6 +60,16 @@ class segmented_rate:
         fig.tight_layout()
         fig.savefig(f'{out_dir}/dcr_vs_thr.png')
         fig.clf()
+    
+    def to_csv(self):
+        fns = [os.path.splitext(os.path.basename(s))[0] for s in self.infpns]
+        out_dir = 'combined_data'
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        out_fn = os.path.commonprefix(fns)+os.path.commonprefix([s[::-1] for s in fns])[::-1]+'.csv'
+        out_pn = os.path.join(out_dir, out_fn)
+        
+        self.df_rate.to_csv(out_pn, index=False)
 
 
 if __name__ == '__main__':
@@ -68,3 +79,4 @@ if __name__ == '__main__':
     
     my_data = segmented_rate(args.input_filenames)
     my_data.plot_rate_vs_thr()
+    my_data.to_csv()

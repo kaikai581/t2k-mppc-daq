@@ -1,0 +1,2 @@
+# How to Run
+1. The script `1_plot_dcr_vs_thr_by_stitching.py` takes in a set of input files, generate a plot of dark rate count vs. threshold, and also output the stitched data to the folder `combined_data`.  
