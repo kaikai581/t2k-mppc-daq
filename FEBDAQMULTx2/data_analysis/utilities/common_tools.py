@@ -49,7 +49,8 @@ class MPPCLine:
             else:
                 print('Only uproot3 and uproot4 are implemented!')
                 sys.exit(-1)
-            df['feb_num'] = df['mac5'].apply(lambda x: 0 if x == 85 else 1 if x == 170 else -1)
+            mac_dict = {mac: i for i, mac in enumerate(sorted(df.mac5.unique()))}
+            df['feb_num'] = df['mac5'].apply(lambda x: mac_dict[x])
             if verbose:
                 print('Converted dataframe from ROOT:\n', df)
             try:
