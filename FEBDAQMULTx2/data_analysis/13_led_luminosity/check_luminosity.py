@@ -32,12 +32,15 @@ class board_luminosity:
         # data containers where keys are channel numbers
         self.ped_adcs = dict()
         self.tot_gains = dict()
+        self.pe_nums = dict()
 
         # final results container
         self.df_avgsigs = pd.DataFrame()
 
         # luminosity getting mapped to the PCB
         self.data_2d = [[0]*8 for _ in range(8)]
+        self.rms_2d = [[0]*8 for _ in range(8)]
+        self.pe_2d = [[0]*8 for _ in range(8)]
 
         # try to load results from file
         # if not exists, calculate it
@@ -131,6 +134,7 @@ class board_luminosity:
                 my_line = common_tools.MPPCLine(self.infpn, feb_id, ch_id, prom=100)
                 self.ped_adcs[feb_id*32+ch_id] = my_line.gainfitp[1]
                 self.tot_gains[feb_id*32+ch_id] = my_line.gainfitp[0]
+                self.pe_nums[feb_id*32+ch_id] = [p.x for p in my_line.points]
     
     def get_mean_sig(self):
         df = self.df_avgsigs
@@ -140,12 +144,48 @@ class board_luminosity:
         
         # one value per channel
         mean_pe = []
+        pe_rms = []
         for feb_id in range(self.df_raw.mac5.nunique()):
             for ch in range(32):
                 b_n_ch = feb_id*32+ch
                 adcs = self.df_raw[self.df_raw.feb_id == feb_id][f'chg[{ch}]']
-                mean_pe.append(((adcs-self.ped_adcs[b_n_ch])/self.tot_gains[b_n_ch]).mean())
+                calib_trig = ((adcs-self.ped_adcs[b_n_ch])/self.tot_gains[b_n_ch])
+                mean_pe.append(calib_trig.mean())
+                pe_rms.append(calib_trig.std())
         df['mean_pe'] = mean_pe
+        df['pe_rms'] = pe_rms
+        df['pe_nums'] = self.pe_nums.values()
+    
+    def get_radial_pe_nums(self, x0=0, y0=0):
+        '''
+        Return a list of PE numbers of which the total number of peaks is the smallest.
+        '''
+        radial_pe_nums = defaultdict(list)
+        radial_npes = defaultdict(list)
+        for row in range(8):
+            for col in range(8):
+                radial_pe_nums[(row-y0)**2+(col-x0)**2].append(self.pe_2d[row][col])
+                radial_npes[(row-y0)**2+(col-x0)**2].append(len(self.pe_2d[row][col]))
+        res = dict()
+        x = []
+        y = []
+        for r, npes in radial_npes.items():
+            minidx = np.argmin(npes)
+            res[np.sqrt(r)] = radial_pe_nums[r][minidx]
+            for npe in radial_pe_nums[r][minidx]:
+                x.append(np.sqrt(r))
+                y.append(npe)
+        return x, y
+
+    def get_radial_pe_rms(self, x0=0, y0=0):
+        '''
+        Return the average of RMSs of finger plots at the same radial distances from the beam center (x0, y0).
+        '''
+        radial_rmss = defaultdict(list)
+        for row in range(8):
+            for col in range(8):
+                radial_rmss[(row-y0)**2+(col-x0)**2].append(self.rms_2d[row][col])
+        return {np.sqrt(r): np.mean(ll) for r, ll in radial_rmss.items()}
     
     def load_or_create_results(self):
         '''
@@ -171,16 +211,23 @@ class board_luminosity:
             self.df_avgsigs.to_csv(out_fpn, index=False)
         else:
             self.df_avgsigs = pd.read_csv(out_fpn)
+
+        # for feb_id in range(self.df_raw.mac5.nunique()):
+        #     for ch_id in range(32):
+        #         my_line = common_tools.MPPCLine(self.infpn, feb_id, ch_id, prom=100)
+        #         self.pe_nums[feb_id*32+ch_id] = [p.x for p in my_line.points]
         
         # fill the PCB map
         def map_to_2d(rec):
             col = int(rec.channel%8)
             row = int(7-rec.channel//8)
-            return row, col, rec.mean_pe
+            return row, col, rec.mean_pe, rec.pe_rms, rec.pe_nums
 
         res = self.df_avgsigs.apply(map_to_2d, axis=1)
-        for row, col, pe in res:
+        for row, col, pe, rms, pe_nums in res:
             self.data_2d[row][col] = pe
+            self.rms_2d[row][col] = rms
+            self.pe_2d[row][col] = list(map(int, pe_nums.strip('[]').split(',')))
 
     def load_raw_data(self):
         df = uproot.open(self.infpn)['mppc'].arrays(library='pd')
@@ -198,11 +245,17 @@ class board_luminosity:
         https://stackoverflow.com/questions/42092218/how-to-add-a-label-to-seaborn-heatmap-color-bar
         '''
         data_2d = [[0]*8 for _ in range(8)]
+        rms_2d = [[0]*8 for _ in range(8)]
+        pe_2d = [[0]*8 for _ in range(8)]
         if swap_row_col:
             for row in range(8):
                 for col in range(8):
                     data_2d[row][col] = self.data_2d[col][row]
+                    rms_2d[row][col] = self.rms_2d[col][row]
+                    pe_2d[row][col] = self.pe_2d[col][row]
         self.data_2d = data_2d
+        self.rms_2d = rms_2d
+        self.pe_2d = pe_2d
 
         ax = sns.heatmap(self.data_2d, cbar_kws={'label': 'mean PE'})
 
@@ -225,8 +278,14 @@ class board_luminosity:
                 radial_lys[(row-y0)**2+(col-x0)**2].append(self.data_2d[row][col])
         radial_ly = {np.sqrt(r): np.mean(ll) for r, ll in radial_lys.items()}
         
+        radial_rms = self.get_radial_pe_rms(x0, y0)
+        x_npe, y_npe = self.get_radial_pe_nums(x0, y0)
+
         plt.clf()
-        plt.scatter(x=radial_ly.keys(), y=radial_ly.values())
+        # plt.scatter(x=radial_ly.keys(), y=radial_ly.values())
+        # add error bars
+        plt.errorbar(x=radial_ly.keys(), y=radial_ly.values(), yerr=radial_rms.values(), fmt='o')
+        plt.scatter(x=x_npe, y=y_npe, c='g', alpha=.3)
         plt.xlabel('radial diatance')
         plt.ylabel('mean photoelectrons')
         plt.grid(axis='both')
