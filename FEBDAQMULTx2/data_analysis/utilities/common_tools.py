@@ -428,6 +428,13 @@ class MPPCLine:
             df = pd.DataFrame(columns=columns)
         df = df.set_index(columns[:3])
 
+        '''
+        Safeguarding:
+        It happens that if the fit fails, the whole breakdown voltage procedure exits.
+        Avoid this situation.
+        '''
+        if self.fitp is None: return
+
         # construct the data dictionary
         new_data = dict()
         new_data['filename'] = os.path.basename(self.infpn)
