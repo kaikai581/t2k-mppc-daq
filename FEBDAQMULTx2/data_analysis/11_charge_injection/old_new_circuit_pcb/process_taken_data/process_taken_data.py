@@ -70,6 +70,10 @@ class injection_data:
                 pass
 
     def get_ch_from_infpn(self, s):
+        fstem = os.path.splitext(os.path.basename(s))[0]
+        for substr in fstem.split('_'):
+            if 'ch' in substr:
+                return int(substr.lstrip('ch'))
         return int(os.path.splitext(os.path.basename(s))[0].lstrip('ch'))
     
     def get_peak_and_ped_adcs(self):
@@ -97,16 +101,28 @@ class injection_data:
             return df_out
 
         self.df_peak_and_ped_adcs_mpv = peak_and_ped_adcs(self.df_peak_adcs_mpv)
+        self.df_peak_and_ped_adcs_mpv['method'] = 'mpv'
         self.df_peak_and_ped_adcs_gauss = peak_and_ped_adcs(self.df_peak_adcs_gauss)
+        self.df_peak_and_ped_adcs_gauss['method'] = 'gauss'
     
     def save_results(self):
         out_dir = 'processed_data'
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
         path_prefixes = self.infpns[0].split('/')
-        out_fn = 'conversion_factors' if len(path_prefixes) < 2 else path_prefixes[-2]
-        self.df_peak_and_ped_adcs_mpv.to_csv(os.path.join(out_dir, out_fn+'_mpv.csv'), index=False)
-        self.df_peak_and_ped_adcs_gauss.to_csv(os.path.join(out_dir, out_fn+'_gauss.csv'), index=False)
+        out_fn = ('conversion_factors' if len(path_prefixes) < 2 else path_prefixes[-2])+'.csv'
+        out_fpn = os.path.join(out_dir, out_fn)
+
+        # combine the two dataframes
+        df_all = pd.concat([self.df_peak_and_ped_adcs_mpv, self.df_peak_and_ped_adcs_gauss])
+        df_all.set_index(['trigger_channel', 'scope_amplitude', 'method'], inplace=True)
+        # if output file exists, combine the dataframe already stored with df_all
+        if os.path.exists(out_fpn):
+            df_old = pd.read_csv(out_fpn, index_col=['trigger_channel', 'scope_amplitude', 'method'])
+            df_all = df_all.combine_first(df_old)
+
+        # save to file
+        df_all.to_csv(out_fpn, index=True)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
