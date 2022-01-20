@@ -8,10 +8,15 @@
 ps aux | grep '[m]ain_control.py' | awk '{print $2}' | xargs -I{} kill -9 {}
 
 # enable conda
-. /home/hepr2018/sklin/anaconda3/etc/profile.d/conda.sh
-
-# activate environment
-conda activate mppc-daq
+if [ "$HOSTNAME" = hepr2021-Precision-5820-Tower-X-Series ]; then
+    . /home/hepr2021/anaconda3/etc/profile.d/conda.sh
+    # activate environment
+    conda activate root6
+else
+    . /home/hepr2018/sklin/anaconda3/etc/profile.d/conda.sh
+    # activate environment
+    conda activate mppc-daq
+fi
 
 # quiet down the warning
 mkdir -p /tmp/runtime-root

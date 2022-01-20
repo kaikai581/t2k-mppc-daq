@@ -11,7 +11,11 @@ fi
 alias ll='ls -l --color=auto'
 
 # enable conda
-. /home/hepr2018/sklin/anaconda3/etc/profile.d/conda.sh
+if [ "$HOSTNAME" = hepr2021-Precision-5820-Tower-X-Series ]; then
+    . /home/hepr2021/anaconda3/etc/profile.d/conda.sh
+else
+    . /home/hepr2018/sklin/anaconda3/etc/profile.d/conda.sh
+fi
 
 # activate environment
 conda activate root6

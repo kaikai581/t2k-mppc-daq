@@ -49,7 +49,8 @@ class MPPCLine:
             else:
                 print('Only uproot3 and uproot4 are implemented!')
                 sys.exit(-1)
-            df['feb_num'] = df['mac5'].apply(lambda x: 0 if x == 85 else 1 if x == 170 else -1)
+            mac_dict = {mac: i for i, mac in enumerate(sorted(df.mac5.unique()))}
+            df['feb_num'] = df['mac5'].apply(lambda x: mac_dict[x])
             if verbose:
                 print('Converted dataframe from ROOT:\n', df)
             try:
@@ -426,6 +427,13 @@ class MPPCLine:
         else:
             df = pd.DataFrame(columns=columns)
         df = df.set_index(columns[:3])
+
+        '''
+        Safeguarding:
+        It happens that if the fit fails, the whole breakdown voltage procedure exits.
+        Avoid this situation.
+        '''
+        if self.fitp is None: return
 
         # construct the data dictionary
         new_data = dict()
@@ -880,7 +888,10 @@ class MPPCLines:
     def save_breakdowns(self, outfpn):
         # if file exists, read it into a dataframe;
         # otherwise create a new dataframe
-        columns = ['measurement_id','board','channel','breakdown_voltage','breakdown_voltage_err','total_gain_5V_over','r2']
+        columns = ['measurement_id','board','channel','breakdown_voltage','breakdown_voltage_err',
+        'total_gain_per_overvoltage',
+        'total_gain_per_overvoltage_err',
+        'total_gain_5V_over','r2']
         if os.path.exists(outfpn):
             df = pd.read_csv(outfpn)
         else:
@@ -894,6 +905,8 @@ class MPPCLines:
         new_data['channel'] = self.ch
         new_data['breakdown_voltage'] = self.fitp[1]
         new_data['breakdown_voltage_err'] = math.sqrt(self.fitpcov[1][1]) if self.fitpcov[1][1] > 0 else -1
+        new_data['total_gain_per_overvoltage'] = self.fitp[0]
+        new_data['total_gain_per_overvoltage_err'] = math.sqrt(self.fitpcov[0][0]) if self.fitpcov[0][0] > 0 else -1
         new_data['total_gain_5V_over'] = self.fitp[0]*5
         new_data['r2'] = self.r2_gof
 
