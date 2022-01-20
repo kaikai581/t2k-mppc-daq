@@ -150,3 +150,7 @@ processed_data/
 
 # Source data folder
 FEBDAQMULTx2/data_analysis/data
+
+# DAQ raw data and debug folders
+FEBDAQMULTx2/DAQ/output_data/
+FEBDAQMULTx2/DAQ/debug/
