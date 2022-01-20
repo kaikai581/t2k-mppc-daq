@@ -103,15 +103,15 @@ class adc_scan:
         Check whether the pe numbering algorithm is already applied.
         If not, spit a message to tell users to run it first and come back later.
         '''
-        # check if pe numbering algorithm is run already
-        pe_numbering_file = os.path.join(os.path.dirname(__file__), '../4_mppc_gain_analysis/processed_data/gain_database.csv')
-        df_pe_numbering = pd.read_csv(pe_numbering_file)
-        # get the first peak number
-        df_temp = df_pe_numbering[(df_pe_numbering.filename == os.path.basename(self.led_fpn)) & (df_pe_numbering.board == self.mppcline_bid) & (df_pe_numbering.channel == self.ch)]
-        if len(df_temp) == 0:
-            print('PE information does not exist. Please run v2_breakdown_loop_*.py script first.')
-            sys.exit(-1)
         if force_first_peak_number is None:
+            # check if pe numbering algorithm is run already
+            pe_numbering_file = os.path.join(common_tools.get_git_root(os.path.dirname(__file__)), 'FEBDAQMULTx2/data_analysis/4_mppc_breakdown_and_gain_analysis/processed_data/gain_database.csv')
+            df_pe_numbering = pd.read_csv(pe_numbering_file)
+            # get the first peak number
+            df_temp = df_pe_numbering[(df_pe_numbering.filename == os.path.basename(self.led_fpn)) & (df_pe_numbering.board == self.mppcline_bid) & (df_pe_numbering.channel == self.ch)]
+            if len(df_temp) == 0:
+                print('PE information does not exist. Please run v2_breakdown_loop_*.py script first.')
+                sys.exit(-1)
             first_peak_number = df_temp.iloc[0]['first_peak_number']
         else:
             first_peak_number = force_first_peak_number
@@ -123,6 +123,9 @@ class adc_scan:
         # the number of found inflection points.
         # The element of the new list has the first_peak_number value at the index at which the value in the inflection list is the first element larger than LED file's threshold.
         df = self.df_rate_scan[self.df_rate_scan.is_inflection]
+        if len(df) < 2:
+            print('Only one inflection point is found. Threshold cannot be calibrated into PE.')
+            sys.exit(-1)
         idx_first_peak = next(i for i, v in enumerate(df['dac']) if v > self.led_spec.threshold)
         pe_numbers = [i-(idx_first_peak-first_peak_number) for i in range(len(df))]
         m, b = np.polyfit(df['dac'], pe_numbers, 1)

@@ -23,6 +23,12 @@ class ScopeWaveform:
     
     def get_max_amp_and_idx(self):
         return self.df.waveform_value.max(), self.df.waveform_value.argmax()
+    
+    def get_mean_charge_in_window(self, tmin=.7e-7, tmax=.8e-7, R=50):
+        df = self.df[(self.df.time > tmin) & (self.df.time < tmax)].copy()
+        dt = self.df.time.iloc[1]-self.df.time.iloc[0]
+        df['partial_charge'] = df.waveform_partial_sum/R*dt
+        return df.partial_charge.mean(), df.partial_charge.std()
 
 class ScopeWaveforms:
     def __init__(self, infpns):

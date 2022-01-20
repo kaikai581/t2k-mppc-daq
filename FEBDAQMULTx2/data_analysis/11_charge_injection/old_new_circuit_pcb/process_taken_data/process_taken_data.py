@@ -96,6 +96,7 @@ class injection_data:
                 rec['ped_adc'] = df_in[df_in.trigger_channel != ch][f'ch{ch}_peak_adc'].mean()
                 # the circuit uses a 100 pF capacitor
                 rec['conversion_factor'] = 100e-12*self.pulse_amp*1e-3*6.25e18/(rec['peak_adc']-rec['ped_adc'])
+                rec['conversion_factor_from_charge'] = 5.942e-12*6.25e18/(rec['peak_adc']-rec['ped_adc'])
                 df_out = df_out.append(rec, ignore_index=True)
             df_out['trigger_channel'] = df_out.trigger_channel.astype('int64')
             return df_out
