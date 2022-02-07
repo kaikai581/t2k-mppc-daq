@@ -60,7 +60,7 @@ class OnePCBSummary:
 
         # save figure to file
         out_dir = os.path.dirname(outfpn)
-        if not out_dir:
+        if out_dir:
             if not os.path.exists(out_dir):
                 os.makedirs(out_dir)
         g.savefig(outfpn, bbox_inches='tight')

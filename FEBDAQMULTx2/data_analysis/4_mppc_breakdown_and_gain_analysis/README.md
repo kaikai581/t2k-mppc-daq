@@ -20,6 +20,11 @@ Then one can run the command to calculate the breakdown voltages and uncalibrate
 ```
 Calculated parameters are stored in the folder `processed_data`, in which `gain_database*.csv` stores parameters obtained for one bias voltage while `breakdown_database*.csv` stores parameters obtained with a voltage scan.  
 
+To summarize the breakdown voltage over all PCB channels, refer to the following example command.
+```
+./v2_plot_breakdown_vs_channel.py -m 20211106_154951_64chpcb_thr225_gain56_temp20_trig0-63_feb136_feb428
+```
+
 To summarize the uncalibrated gains over all PCB channels, use the following example command.
 ```
 ./v3_plot_gain_vs_channel.py -m 20211106_154951_64chpcb_thr225_gain56_temp20_trig0-63_feb136_feb428

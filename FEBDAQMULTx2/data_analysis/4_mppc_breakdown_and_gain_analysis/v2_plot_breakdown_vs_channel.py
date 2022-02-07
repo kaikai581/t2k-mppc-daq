@@ -2,6 +2,7 @@
 
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../utilities'))
+from pathlib import Path
 from data_summary import OnePCBSummary
 
 import argparse
@@ -24,6 +25,9 @@ class ChannelBreakdown:
         self.feb_sns = self.get_feb_sns()
 
         self.df = self.load_data()
+
+        # store the input database name
+        self.db_name = Path(in_db_name).stem
     
     def get_dac_offset(self):
         if len(self.feb_sns) == 1:
@@ -31,7 +35,10 @@ class ChannelBreakdown:
             return list(df['DAC offset (V)'])*2
         df1 = pd.read_csv(f'processed_data/dac_offset_feb{self.feb_sns[0]}.csv')
         df2 = pd.read_csv(f'processed_data/dac_offset_feb{self.feb_sns[1]}.csv')
-        return list(df1['DAC offset (V)'])+list(df2['DAC offset (V)'])
+        df_dac_offset = pd.DataFrame(columns=['ch_id', 'dac_offset'])
+        df_dac_offset['ch_id'] = [i for i in range(len(df1)+len(df2))]
+        df_dac_offset['dac_offset'] = list(df1['DAC offset (V)'])+list(df2['DAC offset (V)'])
+        return df_dac_offset
 
     def get_feb_sns(self):
         feb_sns = []
@@ -48,7 +55,8 @@ class ChannelBreakdown:
         df['ch_id'] = df.board * 32 + df.channel
         df['ch_label'] = df.apply(lambda x: 'b{}c{}'.format(x['board'], x['channel']), axis=1)
         if len(self.feb_sns) > 0:
-            df['dac_offset'] = self.get_dac_offset()
+            df_dac_offset = self.get_dac_offset()
+            df = pd.merge(df, df_dac_offset, how='left', on='ch_id')
             df['corrected_breakdown_voltage'] = df['breakdown_voltage']+df['dac_offset']
         return df
     
@@ -75,7 +83,7 @@ class ChannelBreakdown:
         axhist.grid(axis='y')
 
         # save figure to file
-        outfpn = 'plots/{}/{}vbd_vs_ch.png'.format(meas_id, 'dac_corrected_' if dac_corrected else '')
+        outfpn = 'plots/{}/summary_{}/{}vbd_vs_ch.png'.format(meas_id, self.db_name, 'dac_corrected_' if dac_corrected else '')
         common_tools.easy_save_to(plt, outfpn)
         print('Output figure to', outfpn)
     
@@ -92,7 +100,7 @@ class ChannelBreakdown:
         y_title = 'breakdown voltage (V)'
         y_error = 'breakdown_voltage_err'
         figure_title = f'Dataset: {self.meas_id}'
-        outfpn = 'plots/{}/{}vbd_vs_ch_common_style.png'.format(meas_id, 'dac_corrected_' if dac_corrected else '')
+        outfpn = 'plots/{}/summary_{}/{}vbd_vs_ch_common_style.png'.format(meas_id, self.db_name, 'dac_corrected_' if dac_corrected else '')
 
         # plot!
         my_style.make_summary_plot(x=x, y=y, joint_title=joint_title, figure_title=figure_title, y_title=y_title, y_error=y_error, outfpn=outfpn)

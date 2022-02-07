@@ -3,6 +3,7 @@
 Note: this script currently only works with analysis method of fitting the spectrum shape.
 '''
 
+from pathlib import Path
 from pandas.plotting import table
 
 import os, sys
@@ -29,6 +30,9 @@ class ChannelGain(ChannelBreakdown):
 
         # store the conversion factors for MPPC calibration if exist
         self.conversion_factors = self.get_conversion_factors(meas_id)
+
+        # store the input database name
+        self.db_name = Path(in_db_name).stem
 
     def describe_helper(self, series):
         '''
@@ -101,8 +105,12 @@ class ChannelGain(ChannelBreakdown):
         g.ax_marg_x.remove()
 
         # save figure to file
-        outfpn = 'plots/{}/{}uncalib_gain_vs_ch_biasvoltage_{}V.png'.format(self.meas_id, 'dac_corrected_' if dac_corrected else '', bias_voltage)
-        # common_tools.easy_save_to(plt, outfpn)
+        outfpn = 'plots/{}/summary_{}/{}uncalib_gain_vs_ch_biasvoltage_{}V.png'.format(self.meas_id, self.db_name, 'dac_corrected_' if dac_corrected else '', bias_voltage)
+        # make sure the output folder exists
+        outpn = os.path.dirname(outfpn)
+        if not os.path.exists(outpn):
+            os.makedirs(outpn)
+
         g.fig.set_figwidth(10)
         g.fig.set_figheight(5)
         g.fig.suptitle(f'Dataset: {self.meas_id}')
@@ -144,7 +152,7 @@ class ChannelGain(ChannelBreakdown):
         plt.figtext(1.03, .54, self.describe_helper(df['uncalibrated gain (ADC/PE)'])[1], {'multialignment':'right'})
 
         # save figure to file
-        outfpn = f'plots/{self.meas_id}/uncalib_gain_vs_ch_overvoltage_{overvoltage}V.png'
+        outfpn = f'plots/{self.meas_id}/summary_{self.db_name}/uncalib_gain_vs_ch_overvoltage_{overvoltage}V.png'
         g.savefig(outfpn, bbox_inches='tight')
         print('Output figure to', outfpn)
 
@@ -169,7 +177,7 @@ class ChannelGain(ChannelBreakdown):
         plt.figtext(1.03, .54, self.describe_helper(df['calibrated gain'])[1], {'multialignment':'right'})
 
         # save figure to file
-        outfpn = f'plots/{self.meas_id}/calib_gain_vs_ch_overvoltage_{overvoltage}V.png'
+        outfpn = f'plots/{self.meas_id}/summary_{self.db_name}/calib_gain_vs_ch_overvoltage_{overvoltage}V.png'
         g.savefig(outfpn, bbox_inches='tight')
         print('Output figure to', outfpn)
         
