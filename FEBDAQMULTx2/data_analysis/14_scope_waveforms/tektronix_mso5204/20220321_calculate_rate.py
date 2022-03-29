@@ -32,6 +32,7 @@ class RateFromScope:
             time_intervals.extend(self.trigger_intervals_one_file(infpn))
         df = pd.DataFrame()
         df['time intervals (s)'] = time_intervals
+        df.to_csv('processed_data/interarrival_times.csv', index=False)
         plt.clf()
         g = sns.histplot(data=df, x='time intervals (s)')
         g.figure.savefig(f'plots/t_interval_hist_thresh{self.thresh}.png')
