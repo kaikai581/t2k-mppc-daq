@@ -79,17 +79,17 @@ class ScopeWaveform:
         plt.savefig(outfpn)
         plt.show()
 
-    def waveform_peaks(self, height_thresh=5e-3):
+    def waveform_peaks(self, height_thresh=5e-3, polarity=1):
         '''
         Apply peak finding algorithms to identify peak values.
         '''
-        peaks, props = find_peaks(self.df.waveform_value, prominence=height_thresh, height=height_thresh, distance=50)
+        peaks, props = find_peaks(polarity*self.df.waveform_value, prominence=height_thresh, height=height_thresh, distance=50)
         is_peak = [True if i in peaks else False for i in range(len(self.df))]
         self.df['is_peak'] = is_peak
         return [(self.df.time[i], self.df.waveform_value[i]) for i in peaks]
 
-    def waveform_peak_time_diffs(self, height_thresh=5e-3):
+    def waveform_peak_time_diffs(self, height_thresh=5e-3, polarity=1):
         if not 'is_peak' in self.df.columns:
-            _ = self.waveform_peaks(height_thresh=height_thresh)
+            _ = self.waveform_peaks(height_thresh=height_thresh, polarity=polarity)
         peak_df = self.df[self.df.is_peak == True]
         return peak_df.time.diff().dropna().tolist()
