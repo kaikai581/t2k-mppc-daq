@@ -2,6 +2,7 @@
 
 from glob import glob
 from pathlib import Path
+from scipy.stats import expon
 from statistics import mean, stdev
 from waveform_tools import ScopeWaveform
 import matplotlib.pyplot as plt
@@ -17,6 +18,7 @@ class RateFromScope:
         self.thresh = thresh
         self.polarity = polarity
         self.interarrival_times = None
+        self.max_values = []
 
     def trigger_intervals_one_file(self, infpn):
         wf = ScopeWaveform(infpn)
@@ -33,6 +35,10 @@ class RateFromScope:
 
         # save the figure
         plt.savefig(f'{out_dir}/{Path(infpn).stem}_thresh{self.thresh}.png')
+        plt.clf()
+        # save max values
+        self.max_values.append((self.polarity*wf.df.waveform_value).max())
+
         return wf.waveform_peak_time_diffs(self.thresh, polarity=self.polarity)
         
     def trigger_intervals_all_files(self):
@@ -50,19 +56,44 @@ class RateFromScope:
 
         # save the figure
         g.figure.savefig(f'{out_dir}/t_interval_hist_thresh{self.thresh}.png')
+        print(max(self.max_values))
         return time_intervals
     
     def rate_and_error(self):
         if self.interarrival_times is None:
             self.interarrival_times = self.trigger_intervals_all_files()
         return 1./mean(self.interarrival_times)
+    
+    def rate_from_exp_fit(self):
+        '''
+        We know the interarrival time of a poisson process has an exponential distribution.
+        Fit to it to get the rate!
+        To fit to the exponential distribution form for interarrival time, refer to this link.
+        https://stackoverflow.com/questions/25085200/scipy-stats-expon-fit-with-no-location-parameter
+        '''
+        if self.interarrival_times is None:
+            self.interarrival_times = self.trigger_intervals_all_files()
+        loc, scale = expon.fit(self.interarrival_times, floc=0)
+        return 1/scale
 
 if __name__ == '__main__':
     # the datasets have negative polarity since a preamp is used that outputs
     # inverted signal
     infpns_diff = glob('20220329_rate_waveform_57V_amp_diff_box_25C/*.csv')
     infpns_same = glob('20220329_rate_waveform_57V_amp_in_box_25C/*.csv')
-    rate_diff = RateFromScope(infpns_diff, 8e-3, polarity=-1)
-    rate_same = RateFromScope(infpns_same, 8e-3, polarity=-1)
-    print(rate_diff.rate_and_error())
-    print(rate_same.rate_and_error())
+    df = pd.DataFrame(columns=['threshold', 'same', 'separate'])
+    rate_same = []
+    rate_sep = []
+    # By running the script in advance, the max value is like 16.
+    # The max value I can go is 11. Above that, fit error.
+    for i in range(11):
+        diff = RateFromScope(infpns_diff, i*1e-3, polarity=-1)
+        same = RateFromScope(infpns_same, i*1e-3, polarity=-1)
+        rate_sep.append(diff.rate_from_exp_fit())
+        rate_same.append(same.rate_from_exp_fit())
+
+    df.same = rate_same
+    df.separate = rate_sep
+    df.threshold = list(range(11))
+    os.makedirs('processed_data', exist_ok=True)
+    df.to_csv('processed_data/20220329.csv', index=False)
