@@ -29,7 +29,7 @@ class BaselineWidth:
         dfs = []
         for infpn in self.infpns:
             dfs.append(ScopeWaveform(infpn).df)
-        self.df = pd.concat(dfs)
+        self.df = pd.concat(dfs, ignore_index=True)
 
 if __name__ == '__main__':
     # compare baseline width
@@ -37,7 +37,8 @@ if __name__ == '__main__':
     baseline_0329_same = BaselineWidth(glob('20220329_rate_waveform_57V_amp_in_box_25C/*.csv'), 14, '0329_57V_preamp_same_box')
     baseline_0329_diff = BaselineWidth(glob('20220329_rate_waveform_57V_amp_diff_box_25C/*.csv'), 8.8, '0329_57V_preamp_diff_box')
 
-    df_grand = pd.concat([baseline_0321.df, baseline_0329_same.df, baseline_0329_diff.df])
+    df_grand = pd.concat([baseline_0321.df, baseline_0329_same.df, baseline_0329_diff.df], ignore_index=True)
     out_fpn = 'plots/baseline_comparison.png'
-    g = sns.histplot(data=df_grand, x='waveform voltage / voltage per p.e.', hue='dataset_name')
+    g = sns.histplot(data=df_grand, x='waveform voltage / voltage per p.e.', hue='dataset_name', element='step', stat='percent', common_norm=False, binwidth=1e-4)
+    g.figure.suptitle('area normalized distributions')
     g.figure.savefig(out_fpn)
