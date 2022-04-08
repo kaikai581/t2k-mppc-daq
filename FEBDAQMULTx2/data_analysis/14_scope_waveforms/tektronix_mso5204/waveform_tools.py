@@ -8,19 +8,30 @@ import pandas as pd
 import seaborn as sns
 
 class ScopeWaveform:
-    def __init__(self, infpn):
+    def __init__(self, infpn, remove_dc=True):
         columns = ['info_name', 'value', 'units', 'time', 'waveform_value']
         self.infpn = infpn
         self.df = pd.read_csv(infpn, names=columns, dtype={'info_name': 'str', 'units': 'str'})
+        if remove_dc:
+            self.df.waveform_value = self.df.waveform_value - self.df.waveform_value.median()
 
         # add a partial sum column
         self.waveform_partial_integral()
     
-    def draw_waveform(self):
+    def add_moving_averate(self, window_size=100):
+        self.df[f'waveform_value_moving_average_{window_size}'] = self.df['waveform_value'].rolling(window_size).mean()
+
+    def draw_waveform(self, window_size=None):
+        if window_size is None or window_size == 0:
+            yname = 'waveform_value'
+        else:
+            yname = f'waveform_value_moving_average_{window_size}'
+            if not yname in self.df.columns:
+                yname = 'waveform_value'
         fig, ax = plt.subplots()
-        sns.lineplot(data=self.df, x='time', y='waveform_value', ax=ax)
+        sns.lineplot(data=self.df, x='time', y=yname, ax=ax)
         if 'is_peak' in self.df.columns:
-            sns.scatterplot(data=self.df[self.df.is_peak == True], x='time', y='waveform_value', ax=ax, color='r')
+            sns.scatterplot(data=self.df[self.df.is_peak == True], x='time', y=yname, ax=ax, color='r')
         return fig
 
     def peaks_freqiencies(self, amp, xs):

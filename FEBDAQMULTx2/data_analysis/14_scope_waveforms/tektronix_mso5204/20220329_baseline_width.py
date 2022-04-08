@@ -36,9 +36,11 @@ if __name__ == '__main__':
     baseline_0321 = BaselineWidth(glob('20220321_data_58V/*.csv'), 11, '0321_58V_VME')
     baseline_0329_same = BaselineWidth(glob('20220329_rate_waveform_57V_amp_in_box_25C/*.csv'), 14, '0329_57V_preamp_same_box')
     baseline_0329_diff = BaselineWidth(glob('20220329_rate_waveform_57V_amp_diff_box_25C/*.csv'), 8.8, '0329_57V_preamp_diff_box')
+    print(f'Number of samples:\n{baseline_0321.dataset_name}: {len(baseline_0321.df)}\n{baseline_0329_same.dataset_name}: {len(baseline_0329_same.df)}\n{baseline_0329_diff.dataset_name}: {len(baseline_0329_diff.df)}')
 
     df_grand = pd.concat([baseline_0321.df, baseline_0329_same.df, baseline_0329_diff.df], ignore_index=True)
     out_fpn = 'plots/baseline_comparison.png'
-    g = sns.histplot(data=df_grand, x='waveform voltage / voltage per p.e.', hue='dataset_name', element='step', stat='percent', common_norm=False, binwidth=1e-4)
+    g = sns.histplot(data=df_grand, x='waveform voltage / voltage per p.e.', hue='dataset_name', element='step', stat='percent', common_norm=False, binwidth=.7e-4, alpha=0)
     g.figure.suptitle('area normalized distributions')
+    g.figure.axes[0].annotate(f'RMS:\n0321_58V_VME: {baseline_0321.df["waveform voltage / voltage per p.e."].std():.2e}\n0329_57V_preamp_same_box: {baseline_0329_same.df["waveform voltage / voltage per p.e."].std():.2e}\n0329_57V_preamp_diff_box: {baseline_0329_diff.df["waveform voltage / voltage per p.e."].std():.2e}', xy=(.52, .4), xycoords='axes fraction', fontsize=8, horizontalalignment='left', verticalalignment='bottom')
     g.figure.savefig(out_fpn)
