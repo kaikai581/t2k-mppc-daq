@@ -1,3 +1,4 @@
+from curses import window
 from pathlib import Path
 from scipy.fftpack import fft, ifft
 from scipy.signal import find_peaks
@@ -14,11 +15,12 @@ class ScopeWaveform:
         self.df = pd.read_csv(infpn, names=columns, dtype={'info_name': 'str', 'units': 'str'})
         if remove_dc:
             self.df.waveform_value = self.df.waveform_value - self.df.waveform_value.median()
+        self.threshold = None
 
         # add a partial sum column
         self.waveform_partial_integral()
     
-    def add_moving_averate(self, window_size=100):
+    def add_moving_average(self, window_size=100):
         self.df[f'waveform_value_moving_average_{window_size}'] = self.df['waveform_value'].rolling(window_size).mean()
 
     def draw_waveform(self, window_size=None):
@@ -27,11 +29,17 @@ class ScopeWaveform:
         else:
             yname = f'waveform_value_moving_average_{window_size}'
             if not yname in self.df.columns:
-                yname = 'waveform_value'
+                self.add_moving_average(window_size=window_size)
         fig, ax = plt.subplots()
+        print(yname)
         sns.lineplot(data=self.df, x='time', y=yname, ax=ax)
-        if 'is_peak' in self.df.columns:
-            sns.scatterplot(data=self.df[self.df.is_peak == True], x='time', y=yname, ax=ax, color='r')
+        # Peak finding algorithm has to be rerun for each different window size since data points shift!!!
+        cname = 'is_peak' if window_size is None else f'is_peak_{window_size}'
+        if cname in self.df.columns:
+            sns.scatterplot(data=self.df[self.df[cname] == True], x='time', y=yname, ax=ax, color='r')
+        # if the threshold is not None, draw it as well
+        if not self.threshold is None:
+            plt.axhline(y=self.threshold, color='y', linestyle='--')
         return fig
 
     def peaks_freqiencies(self, amp, xs):
@@ -90,17 +98,26 @@ class ScopeWaveform:
         plt.savefig(outfpn)
         plt.show()
 
-    def waveform_peaks(self, height_thresh=5e-3, polarity=1):
+    def waveform_peaks(self, height_thresh=5e-3, polarity=1, window_size=None):
         '''
         Apply peak finding algorithms to identify peak values.
         '''
-        peaks, props = find_peaks(polarity*self.df.waveform_value, prominence=height_thresh, height=height_thresh, distance=50)
+        wv = self.df.waveform_value
+        if not window_size is None:
+            wv_name = f'waveform_value_moving_average_{window_size}'
+            if not wv_name in self.df.columns:
+                self.add_moving_average(window_size=window_size)
+            wv = self.df[wv_name]
+        peaks, props = find_peaks(polarity*wv, prominence=height_thresh, height=height_thresh, distance=50)
         is_peak = [True if i in peaks else False for i in range(len(self.df))]
-        self.df['is_peak'] = is_peak
-        return [(self.df.time[i], self.df.waveform_value[i]) for i in peaks]
+        cname = 'is_peak' if window_size is None else f'is_peak_{window_size}'
+        self.df[cname] = is_peak
+        self.threshold = polarity*height_thresh
+        return [(self.df.time[i], wv[i]) for i in peaks]
 
-    def waveform_peak_time_diffs(self, height_thresh=5e-3, polarity=1):
-        if not 'is_peak' in self.df.columns:
-            _ = self.waveform_peaks(height_thresh=height_thresh, polarity=polarity)
-        peak_df = self.df[self.df.is_peak == True]
+    def waveform_peak_time_diffs(self, height_thresh=5e-3, polarity=1, window_size=None):
+        cname = 'is_peak' if window_size is None else f'is_peak_{window_size}'
+        if not cname in self.df.columns:
+            _ = self.waveform_peaks(height_thresh=height_thresh, polarity=polarity, window_size=window_size)
+        peak_df = self.df[self.df[cname] == True]
         return peak_df.time.diff().dropna().tolist()
