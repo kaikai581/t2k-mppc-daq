@@ -31,7 +31,7 @@ class ScopeWaveform:
             if not yname in self.df.columns:
                 self.add_moving_average(window_size=window_size)
         fig, ax = plt.subplots()
-        print(yname)
+        print(self.infpn, yname)
         sns.lineplot(data=self.df, x='time', y=yname, ax=ax)
         # Peak finding algorithm has to be rerun for each different window size since data points shift!!!
         cname = 'is_peak' if window_size is None else f'is_peak_{window_size}'
@@ -40,6 +40,13 @@ class ScopeWaveform:
         # if the threshold is not None, draw it as well
         if not self.threshold is None:
             plt.axhline(y=self.threshold, color='y', linestyle='--')
+
+        # save to file
+        out_dir = f'plots/{os.path.dirname(self.infpn)}'
+        os.makedirs(out_dir, exist_ok=True)
+        outfn = f'{Path(self.infpn).stem}_thresh{self.threshold}_window{window_size}.png'
+        fig.savefig(os.path.join(out_dir, outfn))
+
         return fig
 
     def peaks_freqiencies(self, amp, xs):
