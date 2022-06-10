@@ -7,6 +7,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from sympy import Point2D, Line2D
 from sympy.geometry.util import centroid
+from collections import deque
 import copy
 import git
 import math
@@ -39,7 +40,6 @@ class MPPCLine:
             except:
                 print('Error reading file {}'.format(infpn))
                 sys.exit(-1)
-                return
         elif fext == '.root':
             tr_mppc = uproot.open(infpn)['mppc']
             if self.uproot_ver == 3:
@@ -108,6 +108,7 @@ class MPPCLine:
         self.exclude_first_peak = exclude_first_peak
         # option to use a spectral fit function
         self.func = None
+        self.enough_fit_points= False
 
         # select data of the specified board
         self.df_1b = df[df['feb_num'] == feb_id]
@@ -118,39 +119,42 @@ class MPPCLine:
         _, axs = plt.subplots(2)
         histy, bin_edges, _ = axs[0].hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
         self.peaks, _ = find_peaks(histy, prominence=prom)
+        if len(self.peaks) > 2:
+            self.enough_fit_points = True
+
         if verbose:
             print('Found peaks with heights:\n', self.peaks)
         
         # release memory
         plt.close()
+        if self.can_fit():
+            # store processed data
+            pc = PeakCleanup(list(np.array(bin_edges)[self.peaks]))
+            pc.remove_outlier_by_relative_interval(pc_rth, pc_lth)
+            self.peak_adcs = pc.peak_adcs
+            if verbose:
+                print('Peak ADCs:\n', self.peak_adcs)
+            self.points = [Point2D(i, self.peak_adcs[i]) for i in range(len(self.peak_adcs))]
+            # 20210505 now the class can optionally exclude the first identified peak to see
+            # the effect of the pedestal.
+            if exclude_first_peak:
+                self.points = [Point2D(i-1, self.peak_adcs[i]) for i in range(1, len(self.peak_adcs))]
 
-        # store processed data
-        pc = PeakCleanup(list(np.array(bin_edges)[self.peaks]))
-        pc.remove_outlier_by_relative_interval(pc_rth, pc_lth)
-        self.peak_adcs = pc.peak_adcs
-        if verbose:
-            print('Peak ADCs:\n', self.peak_adcs)
-        self.points = [Point2D(i, self.peak_adcs[i]) for i in range(len(self.peak_adcs))]
-        # 20210505 now the class can optionally exclude the first identified peak to see
-        # the effect of the pedestal.
-        if exclude_first_peak:
-            self.points = [Point2D(i-1, self.peak_adcs[i]) for i in range(1, len(self.peak_adcs))]
+            # fit a line to the points
+            if len(self.peaks) > 1:
+                self.line, self.coeff = self.get_line_from_points(self.points)
 
-        # fit a line to the points
-        if len(self.peaks) > 1:
-            self.line, self.coeff = self.get_line_from_points(self.points)
+            # bias voltage
+            self.voltage = self.voltage_from_filename(infpn)
 
-        # bias voltage
-        self.voltage = self.voltage_from_filename(infpn)
+            # do linear fit with scipy's curve_fit for uncertainties in total gain
+            self.x_try = [float(p.x) for p in self.points]
+            self.y_try = [float(p.y) for p in self.points]
+            self.gainfitp, self.gainfitpcov = optimization.curve_fit(my_linear_fun, self.x_try, self.y_try, [70, -250])
 
-        # do linear fit with scipy's curve_fit for uncertainties in total gain
-        self.x_try = [float(p.x) for p in self.points]
-        self.y_try = [float(p.y) for p in self.points]
-        self.gainfitp, self.gainfitpcov = optimization.curve_fit(my_linear_fun, self.x_try, self.y_try, [70, -250])
-
-        # calibrate out the preamp gain to get a pure electron amplification gain
-        # currently the conversion factor is provided by CAEN's measurement
-        self.absolute_gain = self.calibrate_absolute_gain()
+            # calibrate out the preamp gain to get a pure electron amplification gain
+            # currently the conversion factor is provided by CAEN's measurement
+            self.absolute_gain = self.calibrate_absolute_gain()
     
     def adc_spectrum(self, adcmin = 0, adcmax = 4100, savepn=None):
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
@@ -181,6 +185,9 @@ class MPPCLine:
         adc_per_charge = ius(self.preamp_gain)
         # devide total gain by ADC/pC to obtain the absolute gain
         return (self.gainfitp[0]/1.6e-19)/(adc_per_charge/1e-12)
+
+    def can_fit(self):
+        return self.enough_fit_points
 
     def fit_adc_spectrum(self, func, save_fpn=None):
         '''
@@ -589,7 +596,17 @@ class MPPCLines:
         '''
         Given a set of input root files, construct the group of MPPC lines.
         '''
-        self.mppc_lines = [MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose, pcb_half, exclude_first_peak) for infpn in infpns]
+        self.mppc_lines = deque([MPPCLine(infpn, feb_id, ch, prom, pc_lth, pc_rth, voltage_offset, verbose, pcb_half, exclude_first_peak) for infpn in infpns])
+
+        for i in range(len(self.mppc_lines)):
+            if (self.mppc_lines[0]).can_fit():
+                #Keep in mppc_lines
+                elem = self.mppc_lines.popleft()
+                self.mppc_lines.append(elem)
+            else:
+                #remove from mppc_lines
+                self.mppc_lines.popleft()
+
         self.voltage_offset = voltage_offset
         # result containers
         self.centroid_intersection_points = None
@@ -691,6 +708,9 @@ class MPPCLines:
         plots total gain vs. bias voltage, fits a line, and takes the
         x intercept as the breakdown voltage.
         '''
+        if len(self.mppc_lines) < 3:
+            return -1
+
         x = []
         y = []
         yerr = []
@@ -749,7 +769,7 @@ class MPPCLines:
                     yerr = [yerr[i] for i in range(len(yerr)) if z_score[i] < 1]
                 print('Z scores for the breakdown line fit:', z_score)
                 self.fitp, self.fitpcov = optimization.curve_fit(breakdown_voltage_linear_function, x, y, p_init, sigma=yerr)
-        except RuntimeError as e:
+        except Exception as e:
             plt.close()
             return -1
         vbd = self.fitp[1]
