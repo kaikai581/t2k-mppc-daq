@@ -148,6 +148,8 @@ processed_data/
 *.png
 !images/*.png
 
+# PyCharm Stuff
+.idea/
 # Source data folder
 FEBDAQMULTx2/data_analysis/data
 

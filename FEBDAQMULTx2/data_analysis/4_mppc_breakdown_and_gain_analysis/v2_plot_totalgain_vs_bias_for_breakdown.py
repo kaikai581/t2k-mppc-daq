@@ -26,8 +26,10 @@ if __name__ == "__main__":
 
     # result containers for vanila Vset as Vbias
     if voltage_offset == 0:
-        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence, voltage_offset=0, pcb_half=args.pcb_half, exclude_first_peak=args.remove_first_peak)
-        mppc_group.fit_total_gain_vs_bias_voltage(outpn=args.output_path, use_fit_fun=args.fit_spectrum_shape, vset=False, remove_outliers=True)
+        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence, voltage_offset=0,
+                                            pcb_half=args.pcb_half, exclude_first_peak=args.remove_first_peak)
+        mppc_group.fit_total_gain_vs_bias_voltage(outpn=args.output_path, use_fit_fun=args.fit_spectrum_shape,
+                                                  vset=False, remove_outliers=True)
         if not args.fit_spectrum_shape:
             out_db_fn = 'processed_data/breakdown_database.csv'
             out_gain_db_fn = 'processed_data/gain_database.csv'
@@ -38,7 +40,11 @@ if __name__ == "__main__":
         mppc_group.save_breakdowns(out_db_fn)
     # plot Vbias as Vset-voltage_offset
     else:
-        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence, voltage_offset=0, pcb_half=args.pcb_half)
-        mppc_group.fit_total_gain_vs_bias_voltage(outpn=args.output_path, use_fit_fun=args.fit_spectrum_shape, vset=True)
-        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence, voltage_offset=voltage_offset)
-        mppc_group.fit_total_gain_vs_bias_voltage(outpn=args.output_path, use_fit_fun=args.fit_spectrum_shape, vset=False)
+        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence, voltage_offset=0,
+                                            pcb_half=args.pcb_half)
+        mppc_group.fit_total_gain_vs_bias_voltage(outpn=args.output_path, use_fit_fun=args.fit_spectrum_shape,
+                                                  vset=True)
+        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence,
+                                            voltage_offset=voltage_offset)
+        mppc_group.fit_total_gain_vs_bias_voltage(outpn=args.output_path,
+                                                  use_fit_fun=args.fit_spectrum_shape, vset=False)
