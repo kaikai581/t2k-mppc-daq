@@ -765,24 +765,26 @@ class Window(QWidget):
         ## temperature readings will all turn empty after the first reading.
         ## Don't quite know what happens here. However, opening the connection
         ## everytime when I want to get readings seems to be a workaround...
-        # devTempSen = T2KTEMPSENSOR()
-        # temp_readings = devTempSen.query_temperature()
+        devTempSen = T2KTEMPSENSOR()
+        #temp_readings = devTempSen.query_temperature()
         temp_readings = self.devTempSen.query_temperature()
         # print(temp_readings)
 
         for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']:
             if sen_it in temp_readings.keys():
                 # store data
-                self.tsX[sen_it].append(timestamp())
-                self.tsY[sen_it].append(float(temp_readings[sen_it]))
-        
+                if float(temp_readings[sen_it]) > 0.1:
+                    #Check removes zero points from graph. Not Ideal.
+                    self.tsX[sen_it].append(timestamp())
+                    self.tsY[sen_it].append(float(temp_readings[sen_it]))
+
         if sen_id in temp_readings.keys():
             # display reading of the specified channel
             Trb = float(temp_readings[sen_id])
             self.tsTemperatureEdit.setText('{:10.2f}'.format(Trb).strip())
         else:
             self.tsTemperatureEdit.setText('')
-        
+
         # update the temperature plot
         self.plotCurve.setData(list(self.tsX[sen_id]), list(self.tsY[sen_id]), pen=pg.mkPen(color=(0, 0, 255), width=3))
 
