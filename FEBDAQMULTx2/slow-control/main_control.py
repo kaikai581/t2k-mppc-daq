@@ -156,7 +156,7 @@ class Window(QWidget):
         # Add tabs
         self.tabs.addTab(self.tab1, 'Simple Control')
         self.tabs.addTab(self.tab2, 'Parameter Scan')
-        self.tabs.addTab(self.tab3, 'Singal Channel Dark Rate Scan')
+        self.tabs.addTab(self.tab3, 'Single Channel Dark Rate Scan')
         self.tab1.layout = QGridLayout()
         self.tab1.layout.addWidget(self.createVoltageControl(), 0, 0, 1, 1)
         self.tab1.layout.addWidget(self.createPulserControl(), 0, 1, 1, 1)
