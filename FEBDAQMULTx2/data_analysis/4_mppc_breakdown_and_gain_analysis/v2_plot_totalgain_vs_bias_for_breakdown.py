@@ -12,6 +12,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input_files', type=str, nargs='*')
     parser.add_argument('-b', '--board', type=int, default=0)
+    parser.add_argument('-d','--data_id',type=str)
     parser.add_argument('-c', '--channel', type=int, default=24)
     parser.add_argument('--fit_spectrum_shape', action='store_true')
     parser.add_argument('-ph', '--pcb_half', type=int, default=None)
@@ -23,17 +24,18 @@ if __name__ == "__main__":
     infpns = args.input_files
     prominence = args.prominence
     voltage_offset = args.voltage_offset
+    data_id = args.data_id
 
     # result containers for vanila Vset as Vbias
     if voltage_offset == 0:
-        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence, voltage_offset=0, pcb_half=args.pcb_half, exclude_first_peak=args.remove_first_peak)
+        mppc_group = common_tools.MPPCLines(infpns, args.board, args.channel, prom=prominence, voltage_offset=0, verbose=False,pcb_half=args.pcb_half, exclude_first_peak=args.remove_first_peak)
         mppc_group.fit_total_gain_vs_bias_voltage(outpn=args.output_path, use_fit_fun=args.fit_spectrum_shape, vset=False, remove_outliers=True)
         if not args.fit_spectrum_shape:
-            out_db_fn = 'processed_data/breakdown_database.csv'
-            out_gain_db_fn = 'processed_data/gain_database.csv'
+            out_db_fn = 'processed_data/breakdown_database_{}.csv'.format(data_id)
+            out_gain_db_fn = 'processed_data/gain_database_{}.csv'.format(data_id)
         else:
-            out_db_fn = 'processed_data/breakdown_database_fit_spec_shape.csv'
-            out_gain_db_fn = 'processed_data/gain_database_fit_spec_shape.csv'
+            out_db_fn = 'processed_data/breakdown_database_fit_spec_shape_{}.csv'.format(data_id)
+            out_gain_db_fn = 'processed_data/gain_database_fit_spec_shape_{}.csv'.format(data_id)
         mppc_group.save_gains(out_gain_db_fn)
         mppc_group.save_breakdowns(out_db_fn)
     # plot Vbias as Vset-voltage_offset
