@@ -1318,7 +1318,7 @@ UShort_t GetThresholdDAC1()
 
 void SetThresholdDAC2(UShort_t dac1)
 {
-    int offset=1117;
+    int offset=1107;
     for(int i=0; i<10;i++)
     { 
         if( (dac1 & 1)>0) ConfigSetBit(bufSCR,1144,offset+9-i,kTRUE);
@@ -2109,6 +2109,7 @@ void ProcessMessage(std::string msg)
     float biasVoltage = -1;
     float temperature = -1;
     std::string out_fdr = "";
+    std::string boardID = "";
 
     // make sure output directory exists
     gROOT->ProcessLine(".! mkdir -p output_data");
@@ -2143,6 +2144,8 @@ void ProcessMessage(std::string msg)
     // Grab the number of events for parameter scan.
     if(document.HasMember("number of events"))
         psNEvt = std::stoi(document["number of events"].GetString());
+    if(document.HasMember("boardID"))
+        boardID = document["boardID"].GetString();
     //***** Start DAQ *****
     // For a first implementation, set gains on both boards according to the
     // feb1gains array.
@@ -2186,11 +2189,13 @@ void ProcessMessage(std::string msg)
     float vol = 58;
     float temp = 20;
     float gain = -1;
+    float gain2 = -1;
     float threshold_dac = -1;
     int msg_time = -1;
     if(document.HasMember("vol")) vol = document["vol"].GetFloat();
     if(document.HasMember("temp")) temp = std::stof(document["temp"].GetString());
     if(document.HasMember("gain")) gain = document["gain"].GetFloat();
+    if(document.HasMember("gain2")) gain2 = document["gain2"].GetFloat();
     if(document.HasMember("dac")) threshold_dac = document["dac"].GetFloat();
     if(document.HasMember("time")) msg_time = std::stoi(document["time"].GetString());
     // This means DAQ on!
@@ -2226,9 +2231,14 @@ void ProcessMessage(std::string msg)
 
         // configure preamp gain
         if(gain > 0){
-            for(int bid = 0; bid < t->nclients; bid++)
+            float setVal = gain;
+            for(int bid = 0; bid < t->nclients; bid++){
+                if(bid > 0 && gain2 > 0){
+                    setVal = gain2;
+                } 
                 for(int cid = 0; cid < 32; cid++)
-                    fChanGain[bid][cid]->SetNumber(gain);
+                    fChanGain[bid][cid]->SetNumber(setVal);
+            }
         }
 
         //***** DAQ sequence *****
@@ -2241,7 +2251,7 @@ void ProcessMessage(std::string msg)
         // save to disk
         std::string outfpn = std::string(Form("output_data/%d_%d_mppc_volt%.1lf_temp%.1lf.root", dateID, timeID, vol, temp));
         // if there is message time information, store to the subfolder
-        out_fdr = std::string(Form("%d_%d_mppc", dateID, msg_time));
+        out_fdr = std::string(Form("%d_%d_%s", dateID, msg_time, boardID.c_str()));
         if(!out_fdr.empty())
         {
             // create output folder for grouping datasets
