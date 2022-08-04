@@ -134,7 +134,7 @@ def make_plot_from_summary(infpn):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input_files', default=['../data/root/20201028_184652_dark_rate_summary.root'], type=str)
+    parser.add_argument('-i', '--input_files', nargs='*', default=['../data/root/20201028_184652_dark_rate_summary.root'], type=str)
     parser.add_argument('-o', '--output_path', default='plots', type=str)
     args = parser.parse_args()
     infpns = args.input_files
@@ -144,7 +144,8 @@ if __name__ == '__main__':
     if 'summary' in infpns:
         make_plot_from_summary(infpns)
     else:
-        raw_filelist = glob(infpns)
+
+        raw_filelist = glob(infpns[0])
 
     # if raw file list is not empty, process it
     if raw_filelist:
