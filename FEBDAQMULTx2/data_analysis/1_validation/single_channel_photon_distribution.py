@@ -6,6 +6,8 @@ import numpy as np
 import os, sys
 import uproot
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../utilities'))
+import common_tools
 def board_trigger_rate(df, feb_id):
 
     # select data of the specified board
@@ -105,8 +107,16 @@ def main():
     global infn
     infn = os.path.basename(infpn)
     infpn = os.path.join(os.path.dirname(__file__), '../data/root', infn)
+
     tr = uproot.open(infpn)['mppc']
-    df = tr.pandas.df()
+    if common_tools.get_uproot_version()==3:
+        df = tr.pandas.df()
+    elif common_tools.get_uproot_version()==4:
+        df = tr.arrays(library='pd')
+    else:
+        print('Only uproot3 and uproot4 are implemented!')
+        sys.exit(-1)
+
     # add a row for FEB board ID according to the mac5 value
     mac5s = list(df.mac5.unique())
     df['feb_num'] = df['mac5'].apply(lambda x: mac5s.index(x))

@@ -11,6 +11,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import os
 import uproot
+from glob import glob
 
 def common_prefix(strings):
     '''
@@ -107,8 +108,14 @@ def make_plot_from_raw(flist):
 def make_plot_from_summary(infpn):
     # load the tree
     tr = uproot.open(infpn)['tr_rate']
-    df = tr.pandas.df()
-    
+    if common_tools.get_uproot_version() == 3:
+        df = tr.pandas.df()
+    elif common_tools.get_uproot_version() == 4:
+        df = tr.arrays(library='pd')
+    else:
+        print('Only uproot3 and uproot4 are implemented!')
+        sys.exit(-1)
+
     # plot dark rate vs. threshold
     ax = df.plot(x='DAC', y='meanRate_sw', marker='o', fillstyle='none', label='software')
     df.plot(x='DAC', y='meanRate', marker='*', ax=ax, label='hardware')
@@ -134,12 +141,12 @@ if __name__ == '__main__':
     
     # loop through all input files
     raw_filelist = []
-    for infpn in infpns:
-        if 'summary' in infpn:
-            make_plot_from_summary(infpn)
-        else:
-            raw_filelist.append(infpn)
-    
+    if 'summary' in infpns:
+        make_plot_from_summary(infpns)
+    else:
+
+        raw_filelist = glob(infpns[0])
+
     # if raw file list is not empty, process it
     if raw_filelist:
         print('Total files to run through:', len(raw_filelist))

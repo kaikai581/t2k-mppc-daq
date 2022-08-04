@@ -42,9 +42,15 @@ class OnePCBSummary:
             )
 
         # set up all kinds of titles
+        sum = 0
+        for elem in self.df[y]:
+            sum += elem
+        mean = round(sum/len(self.df[y]),4)
+
         g.ax_joint.grid(axis='both')
         g.ax_joint.set_xlabel(x_title)
         g.ax_joint.set_ylabel(y_title)
+        g.ax_joint.set_ylim(mean-1, mean+1)
         g.ax_joint.set_title(joint_title)
         g.plot_marginals(sns.histplot)
         g.ax_marg_y.grid(axis='y')

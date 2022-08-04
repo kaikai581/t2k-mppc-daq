@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+feb_sys = {'feb1': '136', 'feb2': '428', 'feb3': '12808', 'feb4': '13294'}
 
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../utilities'))
@@ -22,13 +23,12 @@ class ChannelBreakdown:
         self.meas_id = meas_id
         # determine FEB serial numbers involved in the measurement
         # from the measurement ID
+        self.db_name = Path(in_db_name).stem
         self.feb_sns = self.get_feb_sns()
-
         self.df = self.load_data()
 
         # store the input database name
-        self.db_name = Path(in_db_name).stem
-    
+
     def get_dac_offset(self):
         if len(self.feb_sns) == 1:
             df = pd.read_csv(f'processed_data/dac_offset_feb{self.feb_sns[0]}.csv')
@@ -45,13 +45,25 @@ class ChannelBreakdown:
         for substr in self.meas_id.split('_'):
             substr = str.lower(substr)
             if 'feb' in str.lower(substr):
-                feb_sns.append(substr.replace('feb', ''))
+                feb_sns.append(substr.replace('feb',''))
+        if len(feb_sns)==0: #Not in meas_id so try db Path
+            parsed_in = self.in_db_name.split('/')
+            print(parsed_in[-2])
+            if parsed_in[-2] == "Primary":
+                feb_sns.append(feb_sys['feb3'])
+                feb_sns.append(feb_sys['feb4'])
+            elif parsed_in[-2] == "Secondary":
+                feb_sns.append(feb_sys['feb1'])
+                feb_sns.append(feb_sys['feb2'])
+            else:
+                print("unable to identify correct FEB DAC offsets")
+                sys.exit(-1)
+
         return feb_sns
 
     def load_data(self):
         # load dataframe
         df = pd.read_csv(self.in_db_name)
-        df = df[df.measurement_id == self.meas_id]
         df['ch_id'] = df.board * 32 + df.channel
         df['ch_label'] = df.apply(lambda x: 'b{}c{}'.format(x['board'], x['channel']), axis=1)
         if len(self.feb_sns) > 0:
@@ -100,7 +112,7 @@ class ChannelBreakdown:
         y_title = 'breakdown voltage (V)'
         y_error = 'breakdown_voltage_err'
         figure_title = f'Dataset: {self.meas_id}'
-        outfpn = 'plots/{}/summary_{}/{}vbd_vs_ch_common_style.png'.format(meas_id, self.db_name, 'dac_corrected_' if dac_corrected else '')
+        outfpn = 'plots/{}/summary_{}/{}vbd_vs_ch_common_style.png'.format(self.meas_id, self.db_name, 'dac_corrected_' if dac_corrected else '')
 
         # plot!
         my_style.make_summary_plot(x=x, y=y, joint_title=joint_title, figure_title=figure_title, y_title=y_title, y_error=y_error, outfpn=outfpn)

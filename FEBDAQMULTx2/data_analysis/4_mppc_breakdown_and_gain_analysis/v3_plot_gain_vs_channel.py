@@ -2,6 +2,8 @@
 '''
 Note: this script currently only works with analysis method of fitting the spectrum shape.
 '''
+feb_sys = {'feb1': '136', 'feb2': '428', 'feb3': '12808', 'feb4': '13294'}
+
 
 from pathlib import Path
 from pandas.plotting import table
@@ -53,7 +55,19 @@ class ChannelGain(ChannelBreakdown):
         '''
         # feb SN should be contained in the measurement ID string
         feb_sns = [x for x in meas_id.split('_') if x.lower().startswith('feb')]
-        if not feb_sns: return None
+        if not feb_sns:
+            #Getting FEBs from in_db_name folder location
+            parsed_in = self.in_db_name.split('/')
+            print(parsed_in[-2])
+            if parsed_in[-2] == "Primary":
+                feb_sns.append(feb_sys['feb3'])
+                feb_sns.append(feb_sys['feb4'])
+            elif parsed_in[-2] == "Secondary":
+                feb_sns.append(feb_sys['feb1'])
+                feb_sns.append(feb_sys['feb2'])
+            else:
+                print("unable to identify correct FEB DAC offsets")
+                return None
 
         # retrieve data from database
         proj_root = common_tools.get_git_root(os.getcwd())
@@ -93,7 +107,7 @@ class ChannelGain(ChannelBreakdown):
         df = self.df.copy()
         df['overvoltage'] = bias_voltage - (df.corrected_breakdown_voltage if dac_corrected else df.breakdown_voltage)
         df = df.apply(self.get_uncalibrated_gain_and_error, axis=1)
-        print(df.columns)
+        #print(df.columns)
 
         g = sns.JointGrid(data=df, x='ch_id', y='uncalibrated gain (ADC/PE)')
         g.ax_joint.errorbar(x=df['ch_id'], y=df['uncalibrated gain (ADC/PE)'], yerr=df['uncalibrated gain error'], fmt='o')
@@ -158,16 +172,17 @@ class ChannelGain(ChannelBreakdown):
 
         # do calibration and plot again
         if not self.conversion_factors: return
-        df['calibrated gain'] = df['uncalibrated gain (ADC/PE)'] * pd.Series(self.conversion_factors)
+        df['calibrated gain'] = df['uncalibrated gain (ADC/PE)'] * pd.Series(self.conversion_factors)/1e6
         g = sns.JointGrid(data=df, x='ch_id', y='calibrated gain')
-        g.ax_joint.errorbar(x=df['ch_id'], y=df['calibrated gain'], yerr=df['uncalibrated gain error']*pd.Series(self.conversion_factors), fmt='o')
+        g.ax_joint.errorbar(x=df['ch_id'], y=df['calibrated gain'], yerr=df['uncalibrated gain error']*pd.Series(self.conversion_factors)/1e6, fmt='o')
         g.ax_joint.grid(axis='both')
         g.ax_joint.set_xlabel('PCB channel number')
+        g.ax_joint.set_ylabel('Calibrated Gain')
         g.ax_joint.set_title(f'Calibrated gain at {overvoltage}V overvoltage')
         g.plot_marginals(sns.histplot)
         g.ax_marg_y.grid(axis='y')
         g.ax_marg_x.remove()
-
+        g.ax_joint.annotate("1e6", xy=(-0.04, 0.99), xycoords='axes fraction')
         # set the figure title and show summary statistics
         g.fig.set_figwidth(10)
         g.fig.set_figheight(5)
