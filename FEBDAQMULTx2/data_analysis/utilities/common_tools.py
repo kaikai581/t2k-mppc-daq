@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 from matplotlib import markers
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.signal import find_peaks
@@ -9,11 +9,12 @@ from sympy import Point2D, Line2D
 from sympy.geometry.util import centroid
 from collections import deque
 import copy
+import os
+os.environ['GIT_PYTHON_REFRESH'] = "quiet"
 import git
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import pandas as pd
 import random
 import scipy.optimize as optimization
@@ -115,7 +116,7 @@ class MPPCLine:
         if verbose:
             print('FEB{} dataframe:\n'.format(feb_id), self.df_1b)
         # make histogram and find peaks
-        self.bins = np.linspace(0, 4100, 821)
+        self.bins = np.linspace(0, 4100, 821) #Exact binning used by FEB DAQ
         _, axs = plt.subplots(2)
         histy, bin_edges, _ = axs[0].hist(self.df_1b[self.chvar], bins=self.bins, histtype='step')
         self.peaks, _ = find_peaks(histy, prominence=prom)
@@ -141,7 +142,7 @@ class MPPCLine:
                 self.points = [Point2D(i-1, self.peak_adcs[i]) for i in range(1, len(self.peak_adcs))]
 
             # fit a line to the points
-            if len(self.peaks) > 1:
+            if len(self.peaks) > 2:
                 self.line, self.coeff = self.get_line_from_points(self.points)
 
             # bias voltage
@@ -201,7 +202,7 @@ class MPPCLine:
         histy, bin_edges, _ = plt.hist(self.df_1b[self.chvar], bins=self.bins, histtype='step', label='data')
         bin_centers = [(bin_edges[i+1]+bin_edges[i])/2 for i in range(len(bin_edges)-1)]
 
-        # continuous zero removal from the end of the data
+        # continuous zero removal from the data
         zero_y_idx = []
         for i in range(len(histy)):
             idx = len(histy)-1-i
@@ -591,6 +592,15 @@ class MPPCLine:
                 return float(tmpstr.lstrip('volt'))
         return 0.
 
+    def get_df(self):
+        return self.df_1b
+
+    def get_points(self):
+        return self.points
+
+    def get_peaks(self):
+        return self.peaks
+
 class MPPCLines:
     def __init__(self, infpns, feb_id, ch, prom=300, pc_lth=0.7, pc_rth=1.4, voltage_offset=0, verbose=False, pcb_half=None, exclude_first_peak=False):
         '''
@@ -750,7 +760,7 @@ class MPPCLines:
         slopes = [(y[i+1]-y[i])/(x[i+1]-x[i]) for i in range(len(y)-1)]
         slope = sum(slopes)/len(slopes) if len(slopes) > 0 else 10
         # slope = (y[1]-y[0])/(x[1]-x[0]) if len(y) >= 2 else 10
-        intercept = 50
+        intercept = 51
         p_init = np.array([slope, intercept])
         min_error = min([val for val in yerr if val > 0])
         yerr = [min_error if val == 0 else val for val in yerr]
@@ -773,8 +783,10 @@ class MPPCLines:
             plt.close()
             return -1
         vbd = self.fitp[1]
+        #Setting graph bounds
         vmax = max(x)*1.01
         vmin = vbd*.95
+        #Plot fit line
         xgain = np.linspace(vbd, vmax, 101)
         ygain = breakdown_voltage_linear_function(xgain, *self.fitp)
         vbd_err = math.sqrt(self.fitpcov[1][1]) if self.fitpcov[1][1] > 0 else 0
@@ -954,6 +966,9 @@ class MPPCLines:
             else:
                 mppc_line.save_gain_spec_fit(outfpn)
 
+    def get_lines(self):
+        return self.mppc_lines
+
 
 class PeakCleanup:
     def __init__(self, peak_adcs):
@@ -1058,7 +1073,7 @@ class PeakCleanup:
 
 def breakdown_voltage_linear_function(x, slope, vbd):
     '''
-    Instead of the blind y = m * x + b, write the breakdown voltage explicitely
+    Instead of the blind y = m * x + b, write the breakdown voltage explicitly
     in the equation for easy error estimate. That is,
     y = slope * (x - vbd)
     '''
@@ -1086,7 +1101,7 @@ def multipoisson_fit_function(x, N, gain, zero, noise, avnpe, excess, mu):
     '''
     This is the multipoisson formula used for fit the MPPC ADC spectrum.
     Source: http://zeus.phys.uconn.edu/wiki/index.php/Characterizing_SiPMs
-    A set of parameters leading to conpicuous peaks is
+    A set of parameters leading to conspicuous peaks is
     {x,1000,10,10,0.2,3,0.05,0.5} where x is in [0,200]
     '''
     maxpe = 13
