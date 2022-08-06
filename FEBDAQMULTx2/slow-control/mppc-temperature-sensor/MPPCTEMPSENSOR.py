@@ -21,8 +21,8 @@ class MPPCTEMPSENSOR:
                 port_name = 'COM1'
             self.conn = serial.Serial(
                 port=port_name,
-                baudrate=115200,
-                parity=serial.PARITY_NONE,
+                baudrate=9600,
+                parity=serial.PAcRITY_NONE,
                 bytesize=serial.EIGHTBITS,
                 timeout=None
             )
@@ -32,6 +32,9 @@ class MPPCTEMPSENSOR:
         self.conn = serial.Serial(
                 port=port_name,
                 baudrate=9600,
+                parity=serial.PARITY_NONE,
+                bytesize=serial.EIGHTBITS,
+                timeout=None
             )
         #Load calibration file 
         self.adc2temp = pd.read_csv('./temp_calib.csv')
