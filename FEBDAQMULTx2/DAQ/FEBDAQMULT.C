@@ -28,6 +28,13 @@
 #ifndef ROOT_TGNumberEntry
 #include "TGNumberEntry.h"
 #endif
+#ifndef ROOT_TGTextEntry
+#include "TGTextEntry.h"
+#endif
+
+#ifndef ROOT_TGTextBuffer
+#include "TGTextBuffer.h"
+#endif
 #ifndef ROOT_TGScrollBar
 #include "TGScrollBar.h"
 #endif
@@ -134,6 +141,7 @@
 #include <unistd.h>
 #include <zmq.hpp>
 #include "FEBDTP.hxx"
+#include <string>
 
 // Namespace for JSON parsing
 using namespace rapidjson;
@@ -160,6 +168,7 @@ TGNumberEntry *fNumberEntry755;
 TGNumberEntry *fNumberEntry886;
 TGNumberEntry *fNumberEntry8869;
 TGNumberEntry *fNumberEntryTME;
+TGTextEntry *fTextEntryFileName;
 //TGLabel *fLabel;
 TGStatusBar *fStatusBar739;
 //******************************************
@@ -271,6 +280,8 @@ UInt_t GrayToBin(UInt_t n)
 
     return res;
 }
+
+
 
 
 Double_t mppc0( Double_t *xx, Double_t *par)
@@ -666,10 +677,10 @@ void SaveMetadata(std::string outfpn, float v_bias, float temper)
     f.Close();
 }
 
-void SaveToFile(std::string outfpn)
+void SaveToFile()
 {
+    std::string outfpn = fTextEntryFileName->GetText() + std::string(".root");
     tr->SaveAs(outfpn.c_str());
-
     // make a tree to store metadata of the configuration parameters
     SaveMetadata(outfpn, -1, -1);
 }
@@ -1554,9 +1565,12 @@ void FEBGUI()
     fTextButton111->SetWrapLength(-1);
     fTextButton111->Resize(123,22);
     fGroupFrame679->AddFrame(fTextButton111, new TGLayoutHints(kLHintsLeft| kLHintsCenterX  | kLHintsTop | kLHintsExpandX,0,0,2,2));
-    // fTextButton111->SetCommand("tr->SaveAs(\"mppc.root\");");
     // save mppc data to file as well as hardware settings
-    fTextButton111->SetCommand("SaveToFile(\"mppc.root\");");
+    
+    fTextEntryFileName = new TGTextEntry(fGroupFrame679, new TGTextBuffer(16));
+    fTextEntryFileName->SetToolTipText("Enter file name for data tree");
+    fGroupFrame679->AddFrame(fTextEntryFileName, new TGLayoutHints(kLHintsLeft| kLHintsCenterX  | kLHintsTop | kLHintsExpandX,0,0,2,2));
+    fTextButton111->SetCommand("SaveToFile()");
 
     fLabel7 = new TGLabel(fGroupFrame679,"0xHH");
     fLabel7->SetTextJustify(36);
