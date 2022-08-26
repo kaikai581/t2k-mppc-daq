@@ -2381,12 +2381,14 @@ void ProcessMessage(std::string msg)
                     slowerBoard = curFeb;
                     if(RunOn == 0) StartDAQ(drsNEvt);
                     // save to disk
-                    std::string outfpn = std::string(Form("rate_scan/raw_data/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", dateID, timeID, curFeb, curCh, thr));
+                    out_fdr = std::string(Form("%d_%d_%s", dateID, timeID, boardID.c_str()));
+                    std::string outfpn = std::string(Form("rate_scan/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", dateID, timeID, curFeb, curCh, thr));
+                   
                     if(!out_fdr.empty())
                     {
                         // create output folder for grouping datasets
-                        gROOT->ProcessLine(Form(".! mkdir -p output_data/%s", out_fdr.c_str()));
-                        outfpn = std::string(Form("rate_scan/raw_data/%s/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", out_fdr.c_str(), dateID, timeID, curFeb, curCh, thr));
+                        gROOT->ProcessLine(Form(".! mkdir -p rate_scan/%s", out_fdr.c_str()));
+                        outfpn = std::string(Form("rate_scan/%s/%d_%d_dark_rate_feb%d_ch%d_thr%.1lf.root", out_fdr.c_str(), dateID, timeID, curFeb, curCh, thr));
                     }
                     tr->SaveAs(outfpn.c_str());
                     SaveMetadata(outfpn, biasVoltage, temperature);
