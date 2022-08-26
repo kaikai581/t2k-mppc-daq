@@ -26,6 +26,14 @@ class T2KTEMPSENSOR:
         except Exception as e:
             print(e)
 
+        port_name = '/dev/ttyUSB0'
+        self.conn = serial.Serial(
+                port=port_name,
+                baudrate=115200,
+                parity=serial.PARITY_NONE,
+                bytesize=serial.EIGHTBITS,
+                timeout=None
+            )
         self.conn.write('run 1\r'.encode())
     
     def __del__(self):
@@ -50,7 +58,7 @@ class T2KTEMPSENSOR:
         return temps
 
     def query_temperature(self):
-        self.conn.write('run 1\r'.encode())
+        # self.conn.write('run 1\r'.encode())
         rb = self.conn.readline().decode()
         # flush "run 1" in the returned message
         while 'run 1' in rb:
