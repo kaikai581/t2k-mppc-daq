@@ -9,6 +9,8 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                 'tektronix-afg3252-function-generator'))
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                 'thermoscientific-rte10-circulator'))
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                'mppc-temperature-sensor'))
 import socket
 
 # for making plots
@@ -29,6 +31,7 @@ from AFG3252 import AFG3252
 from N6700B import N6700B
 from T2KTEMPSENSOR import T2KTEMPSENSOR
 from NESLABRTE10 import NESLABRTE10
+from MPPCTEMPSENSOR import MPPCTEMPSENSOR
 
 # PyQt imports
 from PyQt5 import QtCore
@@ -85,6 +88,7 @@ class Window(QWidget):
         ## Don't quite know what happens here. However, opening the connection
         ## everytime when I want to get readings seems to be a workaround...
         self.devTempSen = T2KTEMPSENSOR()
+        self.mppcTempSen = MPPCTEMPSENSOR()
 
         # widgets I want to have control ***************************************
         # power unit starts with pu
@@ -96,7 +100,7 @@ class Window(QWidget):
         self.puChCB.addItems(['all', '1', '2', '3', '4'])
         self.puChCB.setCurrentIndex(3)
         # self.puChCB.setEnabled(False)
-        self.puVsetEdit = QLineEdit('60')
+        self.puVsetEdit = QLineEdit('57')
         self.puVsetEdit.setValidator(QDoubleValidator(bottom=0, top=60, decimals=10))
         self.puVRbEdit = QLineEdit()
 
@@ -111,19 +115,24 @@ class Window(QWidget):
         self.fgRecallChSel.addItems(['0', '1', '2', '3', '4'])
         # recall waveform when a saved state is selected
         self.fgRecallChSel.activated.connect(self.fgRecallState)
-        self.fgRecallChSel.setCurrentIndex(2)
+        self.fgRecallChSel.setCurrentIndex(3)
         self.fgFreqEdit = QLineEdit('1')
         self.fgFreqEdit.setValidator(QDoubleValidator(bottom=0, decimals=10))
         self.fgFreqBtn = QPushButton(text='Apply')
         self.fgFreqBtn.clicked.connect(self.fgApplyFreq)
-        self.fgAmplEdit = QLineEdit('2.8')
+        self.fgAmplEdit = QLineEdit('1.4')
         self.fgAmplEdit.setValidator(QDoubleValidator(decimals=10))
         self.fgAmplBtn = QPushButton(text='Apply')
         self.fgAmplBtn.clicked.connect(self.fgApplyAmpl)
         # touch the selected state to initialize readings
         self.fgRecallState()
 
-        # a message box
+        #Fan regulation
+        self.turnOnFansSwitch = QPushButton(text='Turn ON Fans')
+        self.turnOnFansSwitch.setCheckable(True)
+        self.turnOnFansSwitch.toggled.connect(self.wcTurnOnFans)
+
+        # a message boxS
         self.msgBox = QTextEdit()
         # self.msgBox.setText('Welcome to the control application!\n')
         self.msgBox.append('Welcome to the control application!')
@@ -131,18 +140,18 @@ class Window(QWidget):
 
         # T2K temperature sensor interface
         self.tsTemperatureCB = QComboBox()
-        self.tsTemperatureCB.addItems(['T0', 'T1', 'T2', 'T3', 'T4'])
+        self.tsTemperatureCB.addItems(['T0', 'T1', 'T2', 'T3', 'T4', 'B0', 'B1', 'B2', 'B3'])
         self.tsTemperatureCB.activated.connect(self.tsReadTemperature)
         self.tsTemperatureEdit = QLineEdit()
         self.tsView = pg.GraphicsView()
         self.tsLo = pg.GraphicsLayout()
         self.tsPlot = None # member variable place holder
         # below are data structure for plotting
-        self.timerTime = 2000
+        self.timerTime = 10000
         self.tsPoints = 90
         self.tsX = dict()
         self.tsY = dict()
-        for sen in ['T0', 'T1', 'T2', 'T3', 'T4']:
+        for sen in ['T0', 'T1', 'T2', 'T3', 'T4', 'B0', 'B1', 'B2', 'B3']:
             self.tsX[sen] = collections.deque(maxlen=self.tsPoints)
             self.tsY[sen] = collections.deque(maxlen=self.tsPoints)
         # end of widgets declaration *******************************************
@@ -156,7 +165,7 @@ class Window(QWidget):
         # Add tabs
         self.tabs.addTab(self.tab1, 'Simple Control')
         self.tabs.addTab(self.tab2, 'Parameter Scan')
-        self.tabs.addTab(self.tab3, 'Singal Channel Dark Rate Scan')
+        self.tabs.addTab(self.tab3, 'Single Channel Dark Rate Scan')
         self.tab1.layout = QGridLayout()
         self.tab1.layout.addWidget(self.createVoltageControl(), 0, 0, 1, 1)
         self.tab1.layout.addWidget(self.createPulserControl(), 0, 1, 1, 1)
@@ -214,7 +223,7 @@ class Window(QWidget):
         self.logDataTimer.timeout.connect(self.wcLogInternalTemperature)
         # also make dataframes for storing data points to be saved to disk.
         self.dfTempSensor = pd.DataFrame(columns=['Datetime','T0','T1','T2',
-                                         'T3','T4'])
+                                         'T3','T4', 'B0', 'B1', 'B2', 'B3', 'ADC0', 'ADC1', 'ADC2', 'ADC3'])
         self.dfWcIntTemp = pd.DataFrame(columns=['Datetime',
                                         'Internal Temperature'])
 
@@ -238,6 +247,7 @@ class Window(QWidget):
         self.devWaterCirculator = NESLABRTE10()
         # member widgets for the water circulator
         self.wcLogDataCkB = QCheckBox()
+        #self.turnOnFansSwitch = QPushButton('Turn ON Fans')
         self.wcSetpointEdit = QLineEdit(text=str(self.devWaterCirculator.read_setpoint()))
         self.wcApplySetpointBtn = QPushButton('Apply')
         self.wcReadbackEdit = QLineEdit(text=str(self.devWaterCirculator.read_internal_temperature()))
@@ -246,6 +256,7 @@ class Window(QWidget):
         # event connection
         self.wcApplySetpointBtn.clicked.connect(self.wcApplySetpoint)
         self.wcSwitchBtn.clicked.connect(self.wcSwitch)
+        #self.turnOnFansSwitch.clicked.connect(self.wcTurnOnFans)
 
         # layout of water circulator control panel
         groupBox = QGroupBox('Thermo Scientific Water Circulator')
@@ -261,6 +272,8 @@ class Window(QWidget):
         grid.addWidget(self.wcSwitchBtn, 2, 3)
         grid.addWidget(self.wcLogDataCkB, 3, 0, Qt.AlignRight)
         grid.addWidget(QLabel('Log Data to File'), 3, 1, 1, 3)
+        grid.addWidget(self.turnOnFansSwitch,4, 0, Qt.AlignRight)
+        
 
         groupBox.setLayout(grid)
 
@@ -276,6 +289,10 @@ class Window(QWidget):
         self.drsDac1From = QLineEdit(text='220')
         self.drsDac1To = QLineEdit(text='220')
         self.drsDac1Step = QLineEdit(text='1')
+
+
+        ### Board ID
+        self.editBoardID = QLineEdit('mppc')
         ### Legacy variables below
         self.drsDac2From = QLineEdit(text='220')
         self.drsDac2To = QLineEdit(text='220')
@@ -325,7 +342,12 @@ class Window(QWidget):
         grid3.addWidget(QLabel('number of events'), 0, 2, Qt.AlignRight)
         grid3.addWidget(self.drsEditNEvt, 0, 3, Qt.AlignLeft)
         groupBox3.setLayout(grid3)
+        grid3.addWidget(QLabel('Board ID'), 0, 5, Qt.AlignRight)
+        grid3.addWidget(self.editBoardID,0,6)
         grid.addWidget(groupBox3, 4, 0, 1, 5)
+
+
+
 
         grid.addWidget(self.drsStartBtn, 5, 4, Qt.AlignCenter)
         return grid
@@ -336,15 +358,14 @@ class Window(QWidget):
         self.editParVal = dict()
         for key in self.parKeys:
             self.editParVal[key] = dict()
-
-        self.editParVal['vol']['from'] = QLineEdit('58')
-        self.editParVal['vol']['to'] = QLineEdit('60')
-        self.editParVal['vol']['step'] = QLineEdit('1')
-        self.editParVal['feb1dac']['from'] = QLineEdit('200')
-        self.editParVal['feb1dac']['to'] = QLineEdit('200')
+        self.editParVal['vol']['from'] = QLineEdit('56')
+        self.editParVal['vol']['to'] = QLineEdit('58.6')
+        self.editParVal['vol']['step'] = QLineEdit('0.1')
+        self.editParVal['feb1dac']['from'] = QLineEdit('275')
+        self.editParVal['feb1dac']['to'] = QLineEdit('275')
         self.editParVal['feb1dac']['step'] = QLineEdit('1')
-        self.editParVal['feb1gain']['from'] = QLineEdit('52')
-        self.editParVal['feb1gain']['to'] = QLineEdit('52')
+        self.editParVal['feb1gain']['from'] = QLineEdit('56')
+        self.editParVal['feb1gain']['to'] = QLineEdit('56')
         self.editParVal['feb1gain']['step'] = QLineEdit('1')
         self.editParVal['feb1bias']['from'] = QLineEdit('200')
         self.editParVal['feb1bias']['to'] = QLineEdit('200')
@@ -352,8 +373,8 @@ class Window(QWidget):
         self.editParVal['feb2dac']['from'] = QLineEdit('230')
         self.editParVal['feb2dac']['to'] = QLineEdit('230')
         self.editParVal['feb2dac']['step'] = QLineEdit('0')
-        self.editParVal['feb2gain']['from'] = QLineEdit('52')
-        self.editParVal['feb2gain']['to'] = QLineEdit('52')
+        self.editParVal['feb2gain']['from'] = QLineEdit('56')
+        self.editParVal['feb2gain']['to'] = QLineEdit('56')
         self.editParVal['feb2gain']['step'] = QLineEdit('1')
         self.editParVal['feb2bias']['from'] = QLineEdit('200')
         self.editParVal['feb2bias']['to'] = QLineEdit('200')
@@ -361,7 +382,8 @@ class Window(QWidget):
         self.editParVal['temp']['from'] = QLineEdit('18')
         self.editParVal['temp']['to'] = QLineEdit('22')
         self.editParVal['temp']['step'] = QLineEdit('1')
-        self.editNEvt = QLineEdit('10000')
+        self.editNEvt = QLineEdit('100000')
+        self.editBoardID = QLineEdit('mppc')
         self.scanBut = QPushButton(text='Start Scan')
         self.scanBut.clicked.connect(self.sendJsonMsg)
 
@@ -420,7 +442,11 @@ class Window(QWidget):
 
         grid.addWidget(QLabel('number of events'), 9, 1, Qt.AlignRight)
         grid.addWidget(self.editNEvt, 9, 2)
-        grid.addWidget(self.scanBut, 9, 6)
+        grid.addWidget(self.scanBut, 10, 6)
+
+        grid.addWidget(QLabel('Board ID'), 10, 1, Qt.AlignRight)
+        grid.addWidget(self.editBoardID,10,2)
+
 
         # put on checkboxes
         self.includeParCB = dict()
@@ -432,7 +458,7 @@ class Window(QWidget):
         
         # After discussion with the boss, these parameters might not need to be
         # scanned. Therefore by default uncheck the checkboxes.
-        for parkey in ['feb1bias', 'feb2dac', 'feb2bias', 'feb2gain']:
+        for parkey in ['feb1bias', 'feb2dac', 'feb2bias']:
             self.includeParCB[parkey].setChecked(False)
             self.includeParCB[parkey].setEnabled(False)
         # Temperature scan takes much time, so disabe by default
@@ -472,8 +498,8 @@ class Window(QWidget):
         grid.addWidget(self.tsTemperatureEdit, 0, 2)
         grid.addWidget(QLabel(u'\u00B0C'), 0, 3)
         grid.addWidget(self.tsLogDataCkB, 1, 0, Qt.AlignRight)
-        grid.addWidget(QLabel('Log Data to File'), 1, 1, 1, 4)
-        grid.addWidget(self.tsView, 2, 0, 2, 4)
+        grid.addWidget(QLabel('Log Data to File'), 1, 1, 1, 4)        
+        grid.addWidget(self.tsView, 3, 0, 2, 4)
         self.tsView.setCentralItem(self.tsLo)
         self.tsView.show()
         self.tsView.resize(200, 100)
@@ -580,6 +606,7 @@ class Window(QWidget):
                     self.puVoltageSwitch.setChecked(False)
                 self.puVsetEdit.setText(str(par_table['vol']))
                 self.puVoltageSwitch.setChecked(True)
+                par_table['boardID'] = self.editBoardID.text()
                 par_table['number of events'] = self.editNEvt.text()
                 par_table['parameter scan'] = 'on'
                 par_table['bias_voltage'] = self.puVsetEdit.text()
@@ -635,6 +662,7 @@ class Window(QWidget):
         packedMsg['dark rate scan']['dac1_step'] = self.drsDac1Step.text()
         packedMsg['dark rate scan']['dac2'] = self.drsDac2From.text()
         packedMsg['dark rate scan']['preamp_gain'] = self.drsEditPreGain.text()
+        packedMsg['boardID'] = self.editBoardID.text()
         packedMsg['drs_nevt'] = self.drsEditNEvt.text()
         packedMsg['bias_voltage'] = self.puVsetEdit.text()
         packedMsg['temperature'] = statistics.mean([self.tsY[sen_it][-1] for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']])
@@ -655,6 +683,7 @@ class Window(QWidget):
             print('Error processing number of events!')
             return
         packedMsg['number of events'] = self.editNEvt.text()
+        packedMsg['boardID'] = self.editBoardID.text()
         print('Slow control sending:', json.dumps(packedMsg))
         self.socket.send_string(json.dumps(packedMsg))
         # Put the temperature and voltage parameters to the scan queue.
@@ -683,6 +712,15 @@ class Window(QWidget):
             if gain_step > 0:
                 # add a small epsilon to include the endpoint
                 gain_vals = list(np.arange(gain_from, gain_to+gain_step/1e5, gain_step))
+
+        gain_vals2 = []
+        if self.includeParCB['feb2gain'].isChecked():
+            gain_from = float(self.editParVal['feb2gain']['from'].text())
+            gain_to = float(self.editParVal['feb2gain']['to'].text())
+            gain_step = float(self.editParVal['feb2gain']['step'].text())
+            if gain_step > 0:
+                # add a small epsilon to include the endpoint
+                gain_vals2 = list(np.arange(gain_from, gain_to+gain_step/1e5, gain_step))
         # Scan threshold. One value for both FEBs.
         threshold_vals = []
         if self.includeParCB['feb1dac'].isChecked():
@@ -721,29 +759,43 @@ class Window(QWidget):
         current_time = datetime.datetime.now()
         proliferate_list = []
         for gain in gain_vals:
-            for j in range(len(self.psQueue)):
-                self.psQueue[j]['gain'] = gain
-                self.psQueue[j]['time'] = current_time.strftime('%H%M%S')
-                proliferate_list.append(self.psQueue[j].copy())
+            for gain2 in gain_vals2:
+                for j in range(len(self.psQueue)):
+                    self.psQueue[j]['gain'] = gain
+                    self.psQueue[j]['gain2'] = gain2
+                    self.psQueue[j]['time'] = current_time.strftime('%H%M%S')
+                    proliferate_list.append(self.psQueue[j].copy())
         self.psQueue = proliferate_list
         print('Packaged message:', self.psQueue)
 
     def tsLogReadouts(self):
+        devTempSen = T2KTEMPSENSOR()
+        mppcTempSen = MPPCTEMPSENSOR()
         if not self.tsLogDataCkB.isChecked():
             return
         # retrieve data and store them to the dataframe
-        temp_readings = self.devTempSen.query_temperature()
+        temp_readings = devTempSen.query_temperature()
+        board_readings = mppcTempSen.query_temperature()
+        print(temp_readings)
+        print(board_readings)
         self.dfTempSensor['Datetime'] = [datetime.datetime.now()]
-        for i in range(5):
+        for i in range(len(temp_readings)):
             sen_id = 'T{}'.format(i)
             self.dfTempSensor[sen_id] = [float(temp_readings[sen_id])]
-        # self.msgBox.append(self.dfTempSensor.to_string())
-
+        
+        for i in range(4):
+            sen_id = 'B{}'.format(i)
+            adc_id = 'ADC{}'.format(i)
+            self.dfTempSensor[sen_id] = [float(board_readings[sen_id])]
+            self.dfTempSensor[adc_id] = [float(board_readings[adc_id])]
+        
+        
+        #self.msgBox.append(self.dfTempSensor.to_string())
         # prepare the output directory
         save_dir = self.prepare_metadata_directory()
 
         # file name to store the temperature data
-        save_fn = 'temperature_sensor_readings.csv'
+        save_fn = 'temperature_sensor_readings_{}.csv'.format(datetime.date.today())
         save_fpn = os.path.join(save_dir, save_fn)
         self.dfTempSensor.to_csv(save_fpn, mode='a',
                                  header=not os.path.exists(save_fpn),
@@ -765,24 +817,35 @@ class Window(QWidget):
         ## temperature readings will all turn empty after the first reading.
         ## Don't quite know what happens here. However, opening the connection
         ## everytime when I want to get readings seems to be a workaround...
-        # devTempSen = T2KTEMPSENSOR()
-        # temp_readings = devTempSen.query_temperature()
+        devTempSen = T2KTEMPSENSOR()
+        mppcTempSen = MPPCTEMPSENSOR()
+        #temp_readings = devTempSen.query_temperature()
         temp_readings = self.devTempSen.query_temperature()
-        # print(temp_readings)
+        board_readings = self.mppcTempSen.query_temperature()
+        #print(temp_readings)
 
-        for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4']:
+        for sen_it in ['T0', 'T1', 'T2', 'T3', 'T4', 'B0', 'B1', 'B2', 'B3']:
             if sen_it in temp_readings.keys():
                 # store data
-                self.tsX[sen_it].append(timestamp())
-                self.tsY[sen_it].append(float(temp_readings[sen_it]))
+                if float(temp_readings[sen_it]) > 0.1:
+                    #Check removes zero points from graph. Not Ideal.
+                    self.tsX[sen_it].append(timestamp())
+                    self.tsY[sen_it].append(float(temp_readings[sen_it]))
+            if sen_it in board_readings.keys():
+                #store data
+                if float(board_readings[sen_it]) > 0.1:
+                    self.tsX[sen_it].append(timestamp())
+                    self.tsY[sen_it].append(float(board_readings[sen_it]))
         
+
         if sen_id in temp_readings.keys():
             # display reading of the specified channel
             Trb = float(temp_readings[sen_id])
             self.tsTemperatureEdit.setText('{:10.2f}'.format(Trb).strip())
-        else:
-            self.tsTemperatureEdit.setText('')
-        
+        if sen_id in board_readings.keys():
+            Trb = float(board_readings[sen_id])
+            self.tsTemperatureEdit.setText('{:10.2f}'.format(Trb).strip())
+
         # update the temperature plot
         self.plotCurve.setData(list(self.tsX[sen_id]), list(self.tsY[sen_id]), pen=pg.mkPen(color=(0, 0, 255), width=3))
 
@@ -807,6 +870,29 @@ class Window(QWidget):
         self.dfWcIntTemp.to_csv(save_fpn, mode='a',
                                 header=not os.path.exists(save_fpn),
                                 index=False)
+
+    def wcTurnOnFans(self):
+        """
+            Turn on air-circulating fans in box. Helps create uniform temperature in box. 
+            Fans rated for 12V 0.37A. 
+            Connected to channels 1 and 2 of power unit
+        """
+        if not self.turnOnFansSwitch.isChecked():
+            self.turnOnFansSwitch.setStyleSheet("background-color : lightgrey")
+            self.turnOnFansSwitch.setText('Turn ON Fans')
+            self.devPowerUnit.power_off(1)
+            self.devPowerUnit.power_off(2)
+        else:
+            self.turnOnFansSwitch.setStyleSheet("background-color : lightgreen")
+            self.turnOnFansSwitch.setText('Turn OFF Fans')
+            
+            Vset = 12.00 #volts
+            #Iset = 0.37 #Amps
+            self.devPowerUnit.set_voltage(1 ,Vset)
+            self.devPowerUnit.set_voltage(2, Vset)
+            self.devPowerUnit.power_on(1)
+            self.devPowerUnit.power_on(2)
+        
 
     def wcReadInternalTemperature(self):
         text=str(self.devWaterCirculator.read_internal_temperature())
